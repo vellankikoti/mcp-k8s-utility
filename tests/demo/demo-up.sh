@@ -47,13 +47,22 @@ check_prereqs() {
     exit 1
   fi
   _ok "Docker daemon reachable"
+  # Warn if other kind clusters are running — they consume Docker memory and can
+  # cause kubeadm TLS timeouts on resource-constrained machines (< 12 GiB Docker RAM).
+  local other_clusters
+  other_clusters=$(kind get clusters 2>/dev/null | grep -v "^${CLUSTER_NAME}$" || true)
+  if [[ -n "${other_clusters}" ]]; then
+    _warn "Other kind clusters are running: $(echo "${other_clusters}" | tr '\n' ' ')"
+    _warn "They consume Docker memory. If cluster creation times out, stop them first."
+  fi
 }
 
 setup_cluster() {
   _step "Tearing down existing '${CLUSTER_NAME}' cluster (if any)…"
   kind delete cluster --name "${CLUSTER_NAME}" 2>/dev/null || true
   _step "Creating kind cluster '${CLUSTER_NAME}'…"
-  kind create cluster --name "${CLUSTER_NAME}" --wait 120s
+  # 300s wait to handle macOS Docker Desktop rate-limiter and resource contention
+  kind create cluster --name "${CLUSTER_NAME}" --wait 300s
   _ok "kind cluster ready"
 }
 
