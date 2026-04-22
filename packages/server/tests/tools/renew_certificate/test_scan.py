@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
-from utility_server.tools.renew_certificate.scan import list_expiring_certificates
+from utility_server.tools.renew_certificate.scan import (
+    _summarise_certificate,
+    list_expiring_certificates,
+)
 
 
 def _cert_obj(name: str, namespace: str, days_until_expiry: int, secret_name: str = "tls-sec"):
@@ -54,3 +57,30 @@ async def test_list_expiring_skips_cert_without_not_after():
     )
     out = await list_expiring_certificates(custom_api=custom_api, within_days=14)
     assert out == []
+
+
+def test_days_until_expiry_uses_ceiling_not_floor():
+    """A cert expiring in 47.6 hours should report 2 days, not 1 (floor).
+
+    This regression guards the math.ceil change in _summarise_certificate so that
+    certs with e.g. 47h remaining are not shown as "1 day" to the operator.
+    """
+    # 47.6 hours from now
+    not_after_str = (datetime.now(UTC) + timedelta(hours=47.6)).isoformat().replace("+00:00", "Z")
+    obj = {
+        "metadata": {"name": "tls-cert", "namespace": "prod", "uid": "u1"},
+        "spec": {
+            "secretName": "tls-sec",
+            "dnsNames": ["svc.example.com"],
+            "issuerRef": {"name": "issuer"},
+        },
+        "status": {
+            "notAfter": not_after_str,
+            "conditions": [{"type": "Ready", "status": "True"}],
+        },
+    }
+    summary = _summarise_certificate(obj)
+    assert summary is not None
+    assert summary.days_until_expiry == 2, (
+        f"Expected ceil(47.6h / 24) == 2, got {summary.days_until_expiry}"
+    )

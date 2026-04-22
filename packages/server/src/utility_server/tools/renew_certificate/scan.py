@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -31,7 +32,7 @@ def _summarise_certificate(obj: dict[str, Any]) -> CertificateSummary | None:
     if not_after is None:
         return None
     now = datetime.now(UTC)
-    days = int((not_after - now).total_seconds() // 86400)
+    days = math.ceil((not_after - now).total_seconds() / 86400)
     return CertificateSummary(
         ref=K8sObjectRef(
             kind="Certificate",
