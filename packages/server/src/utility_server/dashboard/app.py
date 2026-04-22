@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from utility_server import __version__
 from utility_server.dashboard.audit import load_recent_tool_calls
+from utility_server.dashboard.decisions import load_opa_summary
+from utility_server.dashboard.demo import DEMOS
 from utility_server.dashboard.health import probe_all
+from utility_server.dashboard.identities import list_action_sas
 from utility_server.llm.adapter import UtilityLLM
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -70,5 +74,37 @@ def create_app() -> FastAPI:
             "tiles/tool_activity.html",
             {"rows": rows, "audit_path": audit_path},
         )
+
+    @app.get("/tiles/opa-decisions", response_class=HTMLResponse)
+    async def opa_decisions(request: Request) -> HTMLResponse:
+        summary = await load_opa_summary(limit=100)
+        return templates.TemplateResponse(
+            request,
+            "tiles/opa_decisions.html",
+            {"summary": summary},
+        )
+
+    @app.get("/tiles/per-action-sas", response_class=HTMLResponse)
+    async def per_action_sas(request: Request) -> HTMLResponse:
+        kubeconfig = os.environ.get("KUBECONFIG") or os.path.expanduser("~/.kube/config")
+        configured = os.path.exists(kubeconfig)
+        sas = await list_action_sas() if configured else []
+        return templates.TemplateResponse(
+            request,
+            "tiles/per_action_sas.html",
+            {"configured": configured, "sas": sas},
+        )
+
+    @app.get("/tiles/demo-runner", response_class=HTMLResponse)
+    async def demo_runner(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "tiles/demo_runner.html", {})
+
+    @app.post("/actions/demo/{name}", response_class=PlainTextResponse)
+    async def run_demo(name: str) -> PlainTextResponse:
+        fn = DEMOS.get(name)
+        if fn is None:
+            raise HTTPException(status_code=404, detail=f"unknown demo: {name}")
+        result = await fn()
+        return PlainTextResponse(json.dumps(result, indent=2, default=str))
 
     return app

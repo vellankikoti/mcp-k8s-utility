@@ -36,6 +36,30 @@
       <h2>Tool activity (last 20)</h2>
       <p class="tile-loading">loading…</p>
     </section>
+
+    <section class="tile"
+             hx-get="/tiles/opa-decisions"
+             hx-trigger="load, every 5s"
+             hx-swap="innerHTML">
+      <h2>OPA decisions</h2>
+      <p class="tile-loading">loading…</p>
+    </section>
+
+    <section class="tile"
+             hx-get="/tiles/per-action-sas"
+             hx-trigger="load, every 15s"
+             hx-swap="innerHTML">
+      <h2>Per-action ServiceAccounts</h2>
+      <p class="tile-loading">loading…</p>
+    </section>
+
+    <section class="tile tile-wide"
+             hx-get="/tiles/demo-runner"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+      <h2>Run a safe demo</h2>
+      <p class="tile-loading">loading…</p>
+    </section>
   </main>
 </body>
 </html>

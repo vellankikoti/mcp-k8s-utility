@@ -1,0 +1,30 @@
+<h2>OPA decisions</h2>
+{% set sc = summary.status_counts %}
+<div class="decision-summary">
+  <div class="chip chip-ok">allowed: {{ sc.get('allowed_executed', 0) }}</div>
+  <div class="chip chip-warn">denied_opa: {{ sc.get('denied_opa', 0) }}</div>
+  <div class="chip chip-warn">denied_preflight: {{ sc.get('denied_preflight', 0) }}</div>
+  <div class="chip chip-warn">denied_kyverno: {{ sc.get('denied_kyverno', 0) }}</div>
+  <div class="chip">total: {{ summary.total }}</div>
+</div>
+{% if summary.denials %}
+  <h3>Recent denials</h3>
+  <ul class="denial-list">
+    {% for d in summary.denials %}
+      <li>
+        <code>{{ d.tool or '?' }}</code>
+        <span class="denial-status">{{ d.status }}</span>
+        {% if d.reasons %}
+          <span class="denial-reasons">
+            {% for r in d.reasons %}<code>{{ r }}</code>{% if not loop.last %} · {% endif %}{% endfor %}
+          </span>
+        {% endif %}
+        <span class="denial-time">{{ d.created_at }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif summary.total == 0 %}
+  <p class="empty">No audit rows yet.</p>
+{% else %}
+  <p class="empty">No denials in the last {{ summary.total }} rows — all clear.</p>
+{% endif %}

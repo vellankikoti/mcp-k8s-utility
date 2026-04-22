@@ -1,0 +1,22 @@
+<h2>Per-action ServiceAccounts</h2>
+{% if not configured %}
+  <p class="empty">Kubernetes unconfigured — no kubeconfig found.</p>
+{% elif sas %}
+  <table class="sa-table">
+    <thead>
+      <tr><th>namespace</th><th>name</th><th>age</th></tr>
+    </thead>
+    <tbody>
+      {% for sa in sas %}
+        <tr>
+          <td><code>{{ sa.namespace }}</code></td>
+          <td><code>{{ sa.name }}</code></td>
+          <td>{% if sa.age_hours is not none %}{{ '%.1f'|format(sa.age_hours) }}h{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Each SA mints 5-min TokenRequest JWTs on demand. Presence here = action wired for that (verb, namespace).</p>
+{% else %}
+  <p class="empty">No <code>secureops-action-*</code> ServiceAccounts in this cluster.</p>
+{% endif %}

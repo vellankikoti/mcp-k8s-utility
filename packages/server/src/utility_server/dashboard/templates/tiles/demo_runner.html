@@ -1,0 +1,14 @@
+<h2>Run a safe demo</h2>
+<p class="hint">All three are read-only or dry-run only. Nothing is modified in your cluster.</p>
+<div class="demo-buttons">
+  <button hx-post="/actions/demo/evicted-pods" hx-target="#demo-output" hx-swap="textContent">
+    List evicted pods
+  </button>
+  <button hx-post="/actions/demo/cleanup-plan" hx-target="#demo-output" hx-swap="textContent">
+    Propose cleanup plan
+  </button>
+  <button hx-post="/actions/demo/alert-tuning" hx-target="#demo-output" hx-swap="textContent">
+    Propose alert tuning
+  </button>
+</div>
+<pre id="demo-output" class="demo-output">Click a button to see the JSON result.</pre>

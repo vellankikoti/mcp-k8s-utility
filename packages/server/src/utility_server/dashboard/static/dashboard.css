@@ -125,3 +125,61 @@ body {
 .row-denied_preflight td:nth-child(4) { color: var(--err); }
 .activity-table code { background: var(--panel-2); padding: 2px 5px; border-radius: 3px; color: var(--accent); font-size: 11px; }
 .empty { color: var(--muted); font-size: 13px; }
+
+.decision-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.chip-ok   { background: rgba(62,207,142,0.15); color: var(--ok); }
+.chip-warn { background: rgba(255,107,107,0.15); color: var(--err); }
+
+.denial-list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.denial-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.denial-status { color: var(--err); font-weight: 500; }
+.denial-reasons code { background: rgba(255,107,107,0.1); color: var(--err); padding: 1px 5px; border-radius: 3px; margin-right: 2px; }
+.denial-time { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+.sa-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sa-table th, .sa-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.sa-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
+
+.demo-buttons { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.demo-buttons button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.demo-buttons button:hover { filter: brightness(1.15); }
+.demo-output {
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 11px;
+  max-height: 240px;
+  overflow: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Menlo, monospace;
+}
