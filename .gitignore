@@ -1,0 +1,29 @@
+# Internal planning / hackathon docs — not for public repo
+docs/hackathon/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+dist/
+dist-*/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig
