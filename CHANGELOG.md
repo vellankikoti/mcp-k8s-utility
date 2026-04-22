@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.3.0 — 2026-04-22
+
+**Week 3 — full tool surface + Dockerfile + kind demo harness + cosign-signed multi-arch image.**
+
+### Added
+- **Tool #6 `draft_postmortem`** — synthesis tool over K8s events + Prometheus metrics + OpenSearch logs + secure-ops audit rows. Emits a Google-SRE-style markdown postmortem. Every source is gracefully optional; deterministic fallback always renders valid markdown when the LLM is disabled.
+- **Dockerfile** — multi-stage Python 3.13-slim, non-root user, 117 MiB image, built and published to GHCR with cosign keyless signature and CycloneDX SBOM.
+- **Makefile** — `make demo`, `make demo-down`, `make dashboard`, `make test`, `make gate` convenience targets.
+- **kind demo harness** (`tests/demo/`) — `demo-up.sh` bootstraps a 1-node kind cluster, installs cert-manager and a lite Prometheus, seeds `demo-prod` + `demo-staging` namespaces with a self-signed expiring Certificate, an oversized `checkout` Deployment, and a stable `Failed/Evicted` Pod via the ghost-node technique.
+- **Scenario cheat-sheets** — A (cert renewal), B (evicted-pod cleanup), C (postmortem drafting).
+- **Docs** — `docs/quickstart.md` (3-command onboarding), `docs/claude-desktop-config.md` (MCP wiring + troubleshooting).
+
+### Fixed
+- `days_until_expiry` now uses ceiling rounding so a cert 47.6 h away shows as 2 days, not 1 — operators see accurate urgency.
+- `make demo` bumped kind `--wait` from 120 s to 300 s; added a proactive WARN when other kind clusters are running (Docker Desktop memory pressure was causing kubeadm TLS timeouts on modestly provisioned machines).
+- Evicted-pod seeding now uses the **ghost-node technique** (Pod bound to a nonexistent `nodeName`) so kubelet never reconciles the status patch. Scenario B now reliably shows 1 evicted pod across all recent k8s versions.
+
+### Published
+- PyPI: `mcp-k8s-utility==0.3.0` (all 13 tools).
+- GHCR: `ghcr.io/vellankikoti/mcp-k8s-utility:v0.3.0` (multi-arch linux/amd64 + linux/arm64, cosign-signed).
+- SBOM: attached to GitHub Release as `sbom-v0.3.0.cdx.json`.
+
+### Invariants (unchanged — enforced in every tool)
+- LLM narrates, never decides. Every `narrate()` call has a deterministic fallback. `UTILITY_LLM_PROVIDER=disabled` yields identical safety behavior.
+- Every destructive write is dry-run by default, pattern/tag/allowlist-gated, and rate-limited.
+- Policy-gated writes route through the `mcp-k8s-secure-ops` broker: OPA pre-flight + 5-min per-action token + tamper-evident audit.
+
 ## v0.2.0 — 2026-04-22
 
 **Week 2 alpha — 5 tools + dashboard + LLM-agnostic narration everywhere.**

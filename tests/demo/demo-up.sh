@@ -167,9 +167,9 @@ YAML
 }
 
 seed_evicted_pod() {
-  _step "Seeding a canonical Evicted pod in demo-staging…"
-  # Apply a short-lived Pod, wait for completion, then patch status to Failed/Evicted.
-  # This is a test-only technique — Pod has no owner (intentionally orphaned).
+  _step "Seeding a canonical Evicted pod in demo-staging (via ghost-node technique)…"
+  # Bind the pod to a nonexistent node so no kubelet reconciles its status.
+  # The apiserver accepts the patch; the pod stays Failed/Evicted indefinitely.
   kubectl apply -f - <<'YAML'
 apiVersion: v1
 kind: Pod
@@ -178,25 +178,22 @@ metadata:
   namespace: demo-staging
   labels: { demo: evicted-seed }
 spec:
+  nodeName: ghost-node-that-never-exists
   restartPolicy: Never
+  terminationGracePeriodSeconds: 0
   containers:
     - name: ghost
       image: busybox:1.36
-      command: ["sh", "-c", "exit 0"]
+      command: ["sh", "-c", "sleep 1"]
 YAML
-  # Wait for Succeeded or Failed before touching status subresource
-  kubectl -n demo-staging wait --for=jsonpath='{.status.phase}'=Succeeded \
-    pod/stale-pod-1 --timeout=60s 2>/dev/null \
-    || kubectl -n demo-staging wait --for=jsonpath='{.status.phase}'=Failed \
-       pod/stale-pod-1 --timeout=30s 2>/dev/null || true
-  # Patch status to mimic an Evicted pod
-  if kubectl -n demo-staging patch pod stale-pod-1 \
-       --type=merge --subresource=status \
-       -p '{"status":{"phase":"Failed","reason":"Evicted","message":"The node was low on resource: ephemeral-storage."}}' \
-       2>/dev/null; then
-    _ok "stale-pod-1 patched to Failed/Evicted in demo-staging"
+  # Wait briefly for the Pod object to be created, then patch status.
+  kubectl -n demo-staging wait --for=create pod/stale-pod-1 --timeout=15s >/dev/null 2>&1 || true
+  if kubectl -n demo-staging patch pod stale-pod-1 --type=merge --subresource=status -p \
+    '{"status":{"phase":"Failed","reason":"Evicted","message":"The node was low on resource: ephemeral-storage."}}' \
+    >/dev/null 2>&1; then
+    _ok "stale-pod-1 seeded Failed/Evicted (ghost-node technique — kubelet will never touch it)"
   else
-    _warn "Could not patch pod status to Evicted — some kube-apiserver versions restrict this. Demo still works; list_evicted_pods will show 0 candidates."
+    _warn "status subresource patch rejected by kube-apiserver; scenario B will show 0 evicted pods"
   fi
 }
 
