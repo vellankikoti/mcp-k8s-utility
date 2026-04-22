@@ -1,6 +1,6 @@
 [project]
 name = "mcp-k8s-utility"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-assisted Kubernetes toil elimination — LLM-agnostic, policy-gated, audit-chained."
 readme = "README.md"
 requires-python = ">=3.11"

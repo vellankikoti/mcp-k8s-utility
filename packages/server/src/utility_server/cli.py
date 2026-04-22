@@ -51,7 +51,11 @@ def llm_probe(
         os.environ["UTILITY_LLM_PROVIDER"] = provider
 
     async def _run() -> None:
-        llm = UtilityLLM.from_env()
+        try:
+            llm = UtilityLLM.from_env()
+        except ValueError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(code=1) from None
         typer.echo(f"provider: {llm.provider_name}")
         out = await llm.narrate(
             "In one sentence, say hello from the configured provider.",

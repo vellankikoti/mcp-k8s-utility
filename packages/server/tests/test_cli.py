@@ -9,7 +9,7 @@ runner = CliRunner()
 def test_cli_version_prints_package_version():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "0.1.0" in result.stdout
+    assert "0.1.1" in result.stdout
 
 
 def test_cli_has_serve_mcp_command():
@@ -31,3 +31,14 @@ def test_cli_llm_probe_disabled_prints_noop(monkeypatch):
     assert result.exit_code == 0
     assert "disabled" in result.stdout.lower()
     assert "none" in result.stdout.lower() or "fallback" in result.stdout.lower()
+
+
+def test_cli_llm_probe_invalid_provider_exits_cleanly(monkeypatch):
+    monkeypatch.setenv("UTILITY_LLM_PROVIDER", "bogus")
+    result = runner.invoke(app, ["llm-probe"])
+    assert result.exit_code == 1
+    # Error message surfaces via stderr (typer merges it into output by default in CliRunner)
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert "bogus" in combined.lower() or "not recognized" in combined.lower()
+    # And no raw Traceback leaked
+    assert "Traceback" not in combined

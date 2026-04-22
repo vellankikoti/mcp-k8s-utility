@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 from kubernetes_asyncio import client as k8s_client
 from kubernetes_asyncio import config as k8s_config
 
+from utility_server import __version__
 from utility_server.llm.adapter import UtilityLLM
 from utility_server.models import RenewalPlan
 from utility_server.prom_client import PromClient
@@ -17,7 +18,7 @@ from utility_server.tools.renew_certificate.scan import list_expiring_certificat
 from utility_server.tools.right_size_workload.analyze import propose_right_size_plan
 from utility_server.tools.right_size_workload.narrate import narrate_plan
 
-mcp: FastMCP = FastMCP("mcp-k8s-utility")
+mcp: FastMCP = FastMCP("mcp-k8s-utility", version=__version__)
 
 _api_client: Any = None
 _custom_api: Any = None

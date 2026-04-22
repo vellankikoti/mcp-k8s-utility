@@ -6,7 +6,25 @@ Capstone of the [mcp-k8s conference series](https://github.com/vellankikoti). De
 
 ## Status
 
-Pre-v0.1.0 — under active development.
+v0.1.1 alpha — under active development.
+
+## Requirements
+
+- **Python 3.11 or newer** (macOS default `python3` is 3.9 — use `python3.11` or newer explicitly)
+- Kubernetes cluster reachable via `$KUBECONFIG` (local `kind` is fine)
+- (Optional) `mcp-k8s-secure-ops` broker deployed for policy-gated writes
+- (Optional) Prometheus, cert-manager, OpenSearch, Grafana — only the tools you use need the corresponding sidecar.
+
+## Install
+
+```bash
+# with uv (recommended)
+uvx --python 3.11 mcp-k8s-utility version
+
+# with pip
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install mcp-k8s-utility
+```
 
 ## The safety invariants
 

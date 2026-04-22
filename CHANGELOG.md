@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.1 — 2026-04-22
+
+Post-v0.1.0 verification sweep found 2 demo-visible polish bugs + 1 UX gap. All fixed.
+
+### Fixed
+- **MCP `serverInfo.version`** now reports the package version (`0.1.1`) instead of the FastMCP library version. Claude Desktop and other MCP hosts will display the correct product version.
+- **`llm-probe`** on invalid `UTILITY_LLM_PROVIDER` now prints a one-line error and exits 1 cleanly — no raw traceback leaked to users.
+
+### Docs
+- README now states Python 3.11+ requirement explicitly (macOS `python3` resolves to 3.9 and was silently failing `pip install`).
+
 ## v0.1.0 — 2026-04-22
 
 **Alpha release — Week 1 of capstone development.**
