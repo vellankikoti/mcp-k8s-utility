@@ -71,7 +71,9 @@ def _model_for(provider: Provider, default: str) -> str:
 async def _narrate_vertex(prompt: str, structured: dict[str, Any]) -> str | None:
     try:
         import vertexai  # type: ignore[import-not-found,unused-ignore]
-        from vertexai.generative_models import GenerativeModel  # type: ignore[import-not-found,unused-ignore]
+        from vertexai.generative_models import (
+            GenerativeModel,  # type: ignore[import-not-found,unused-ignore]
+        )
     except ImportError:
         return None
 
