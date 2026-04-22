@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.2.0 — 2026-04-22
+
+**Week 2 alpha — 5 tools + dashboard + LLM-agnostic narration everywhere.**
+
+### Added
+- **Tool #3 `cleanup_evicted_pods`** — scan/plan/execute with phase-filter, age gate, per-namespace rate limit, and env-driven namespace allowlist. Only touches pods already in `Failed/Evicted`; never touches live workloads.
+- **Tool #4 `tune_alert_thresholds`** — Prometheus-driven flappy-alert detection with advisory `for:` duration recommendations. Critical-severity alerts flagged for human review; no apply path (Grafana PATCH deferred to v0.3).
+- **Tool #5 `opensearch_retention_cleanup`** — index-pattern gate, retention-tag safety, dry-run default, per-call rate limit. Shipped a minimal `OpenSearchClient` HTTP wrapper that never raises.
+- **Dashboard** (`mcp-k8s-utility dashboard`) — FastAPI + HTMX on `:8080`. Five live tiles + a demo-runner: system health, LLM provider, tool activity, OPA decisions, per-action ServiceAccounts, plus three safe read-only demo buttons. Graceful degradation: every tile renders correctly when its backing system is missing.
+
+### Invariants reinforced
+- Every write tool has a denial scenario exercised by unit tests.
+- Every LLM call has a deterministic fallback; `--no-llm` gives identical safety behavior.
+- OpenSearch delete path is pattern-gated (deny-by-default) and compliance-tag-safe.
+
+### Infrastructure
+- 88 tests passing, ruff + mypy strict clean.
+- PyPI: `mcp-k8s-utility==0.2.0`.
+- MCP registry: 12 tools visible via `list_tools()`.
+
+### Known gaps (v0.2.0)
+- No Dockerfile yet (release `image` job disabled until Week 3).
+- No kind-cluster demo harness yet (Week 3).
+- `draft_postmortem` tool #6 deferred to Week 3.
+- Grafana alert-rule apply path deferred to v0.3.
+
 ## v0.1.1 — 2026-04-22
 
 Post-v0.1.0 verification sweep found 2 demo-visible polish bugs + 1 UX gap. All fixed.
