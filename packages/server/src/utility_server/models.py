@@ -153,3 +153,47 @@ class AlertTuningReport(BaseModel):
     findings: list[AlertTuningProposal]
     narration: str | None
     analyzed_at: datetime
+
+
+class OpenSearchIndexSummary(BaseModel):
+    name: str
+    doc_count: int
+    size_bytes: int
+    creation_timestamp: datetime | None
+    age_days: float | None
+    retention_tagged: bool
+    matched_pattern: str | None
+
+
+class RetentionCleanupCandidate(BaseModel):
+    index: OpenSearchIndexSummary
+    will_delete: bool
+    skip_reason: str | None = None
+
+
+class RetentionCleanupPlan(BaseModel):
+    older_than_days: float
+    index_patterns: list[str]
+    max_deletes: int
+    candidates: list[RetentionCleanupCandidate]
+    total_bytes_to_reclaim: int
+    total_docs_to_remove: int
+    narration: str | None
+    proposed_at: datetime
+
+
+class RetentionCleanupOutcome(BaseModel):
+    index: str
+    status: Literal["deleted", "skipped_dry_run", "skipped_policy", "failed"]
+    size_bytes: int
+    error: str | None = None
+
+
+class RetentionCleanupResult(BaseModel):
+    dry_run: bool
+    executed_at: datetime
+    outcomes: list[RetentionCleanupOutcome]
+    deleted_count: int
+    deleted_bytes: int
+    skipped_count: int
+    failed_count: int

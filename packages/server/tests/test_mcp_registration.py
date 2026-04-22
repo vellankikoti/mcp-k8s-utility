@@ -16,6 +16,9 @@ async def test_renew_certificate_tools_registered():
         "execute_cleanup_plan",
         "list_noisy_alerts",
         "propose_alert_tuning",
+        "list_old_opensearch_indices",
+        "propose_retention_cleanup",
+        "execute_retention_cleanup",
     }
     missing = required - names
     assert not missing, f"missing tools: {missing}"

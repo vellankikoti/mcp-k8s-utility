@@ -10,11 +10,15 @@ from kubernetes_asyncio import config as k8s_config
 
 from utility_server import __version__
 from utility_server.llm.adapter import UtilityLLM
-from utility_server.models import CleanupPlan, RenewalPlan
+from utility_server.models import CleanupPlan, RenewalPlan, RetentionCleanupPlan
+from utility_server.opensearch_client import OpenSearchClient
 from utility_server.prom_client import PromClient
 from utility_server.tools.cleanup_evicted_pods.execute import execute_cleanup_plan
 from utility_server.tools.cleanup_evicted_pods.plan import propose_cleanup_plan
 from utility_server.tools.cleanup_evicted_pods.scan import list_evicted_pods
+from utility_server.tools.opensearch_retention.execute import execute_retention_plan
+from utility_server.tools.opensearch_retention.plan import propose_retention_plan
+from utility_server.tools.opensearch_retention.scan import list_old_indices
 from utility_server.tools.renew_certificate.execute import execute_renewal_plan
 from utility_server.tools.renew_certificate.plan import propose_renewal_plan
 from utility_server.tools.renew_certificate.scan import list_expiring_certificates
@@ -204,6 +208,51 @@ async def propose_alert_tuning_tool(
         min_flaps_per_hour=min_flaps_per_hour,
     )
     return report.model_dump(mode="json")
+
+
+@mcp.tool(name="list_old_opensearch_indices")
+async def list_old_opensearch_indices_tool(
+    older_than_days: float, index_patterns: list[str]
+) -> list[dict[str, Any]]:
+    """List OpenSearch indices older than `older_than_days` matching any of `index_patterns`.
+    Read-only. Returns empty list if OPENSEARCH_URL is unset or the cluster is unreachable."""
+    client = OpenSearchClient()
+    indices = await list_old_indices(
+        client=client, older_than_days=older_than_days, index_patterns=index_patterns
+    )
+    return [i.model_dump(mode="json") for i in indices]
+
+
+@mcp.tool(name="propose_retention_cleanup")
+async def propose_retention_cleanup_tool(
+    older_than_days: float,
+    index_patterns: list[str],
+    max_deletes: int = 50,
+) -> dict[str, Any]:
+    """Dry-run retention cleanup with size-reclaim preview, pattern gate, retention-tag safety,
+    and per-call rate limit. LLM narration if a provider is configured, deterministic fallback
+    otherwise."""
+    client = OpenSearchClient()
+    llm = UtilityLLM.from_env()
+    plan = await propose_retention_plan(
+        client=client,
+        older_than_days=older_than_days,
+        index_patterns=index_patterns,
+        max_deletes=max_deletes,
+        llm=llm,
+    )
+    return plan.model_dump(mode="json")
+
+
+@mcp.tool(name="execute_retention_cleanup")
+async def execute_retention_cleanup_tool(
+    plan: dict[str, Any], dry_run: bool = True
+) -> dict[str, Any]:
+    """Apply a retention cleanup plan. Only indices marked will_delete=True are touched."""
+    client = OpenSearchClient()
+    typed_plan = RetentionCleanupPlan.model_validate(plan)
+    result = await execute_retention_plan(client=client, plan=typed_plan, dry_run=dry_run)
+    return result.model_dump(mode="json")
 
 
 def run_stdio() -> None:
