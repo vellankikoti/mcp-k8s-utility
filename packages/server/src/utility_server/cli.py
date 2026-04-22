@@ -64,3 +64,16 @@ def llm_probe(
         typer.echo(f"response: {out if out else '(none — fallback path)'}")
 
     asyncio.run(_run())
+
+
+@app.command("dashboard")
+def dashboard(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
+    port: int = typer.Option(8080, "--port", help="Bind port"),
+) -> None:
+    """Run the HTTP dashboard (FastAPI + HTMX)."""
+    import uvicorn
+
+    from utility_server.dashboard.app import create_app
+
+    uvicorn.run(create_app(), host=host, port=port, log_level="info")

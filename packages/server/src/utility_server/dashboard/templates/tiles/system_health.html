@@ -1,0 +1,10 @@
+<h2>System health</h2>
+<ul class="health-list">
+  {% for s in statuses %}
+    <li class="health-item status-{{ s.status }}">
+      <span class="pill">{{ s.status }}</span>
+      <span class="system-name">{{ s.name }}</span>
+      <span class="system-detail">{{ s.detail }}</span>
+    </li>
+  {% endfor %}
+</ul>

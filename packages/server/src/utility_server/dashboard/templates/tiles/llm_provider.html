@@ -1,0 +1,12 @@
+<h2>LLM provider</h2>
+{% if error %}
+  <p class="error"><strong>error:</strong> {{ error }}</p>
+{% else %}
+  <ul class="kv">
+    <li><span>provider</span><code>{{ provider }}</code></li>
+    <li><span>model</span><code>{{ model }}</code></li>
+  </ul>
+  <p class="hint">
+    switch with <code>UTILITY_LLM_PROVIDER=vertex|anthropic|openai|ollama|disabled</code>
+  </p>
+{% endif %}

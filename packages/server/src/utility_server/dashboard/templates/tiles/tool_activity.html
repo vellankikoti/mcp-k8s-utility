@@ -1,0 +1,24 @@
+<h2>Tool activity (last 20)</h2>
+{% if rows %}
+  <table class="activity-table">
+    <thead>
+      <tr><th>row</th><th>time</th><th>tool</th><th>status</th><th>opa</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+        <tr class="row-{{ r.status or 'unknown' }}">
+          <td>{{ r.row_id }}</td>
+          <td>{{ r.created_at }}</td>
+          <td><code>{{ r.tool or '?' }}</code></td>
+          <td>{{ r.status or '?' }}</td>
+          <td>{{ r.opa_allow if r.opa_allow is not none else '—' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="empty">
+    No audit rows yet.
+    {% if audit_path %}<br>Path: <code>{{ audit_path }}</code>{% endif %}
+  </p>
+{% endif %}

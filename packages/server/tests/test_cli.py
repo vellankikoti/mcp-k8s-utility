@@ -42,3 +42,10 @@ def test_cli_llm_probe_invalid_provider_exits_cleanly(monkeypatch):
     assert "bogus" in combined.lower() or "not recognized" in combined.lower()
     # And no raw Traceback leaked
     assert "Traceback" not in combined
+
+
+def test_cli_has_dashboard_command():
+    result = runner.invoke(app, ["dashboard", "--help"])
+    assert result.exit_code == 0
+    out = result.stdout.lower()
+    assert "dashboard" in out or "htmx" in out or "fastapi" in out or "http" in out

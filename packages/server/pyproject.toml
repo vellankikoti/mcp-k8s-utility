@@ -21,6 +21,9 @@ dependencies = [
   "aiosqlite>=0.20",
   "kubernetes-asyncio>=30.0",
   "mcp-k8s-secure-ops>=1.0.3",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -47,3 +50,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/utility_server"]
+include = [
+  "src/utility_server/**/*.py",
+  "src/utility_server/dashboard/templates/**/*.html",
+  "src/utility_server/dashboard/static/**/*",
+]

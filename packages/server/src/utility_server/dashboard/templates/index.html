@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>mcp-k8s-utility · dashboard</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>mcp-k8s-utility <span class="ver">v{{ version }}</span></h1>
+    <div class="tagline">AI narrates. Policies decide. Tokens expire. Audit chains.</div>
+  </header>
+
+  <main class="tile-grid">
+    <section class="tile"
+             hx-get="/tiles/system-health"
+             hx-trigger="load, every 5s"
+             hx-swap="innerHTML">
+      <h2>System health</h2>
+      <p class="tile-loading">loading…</p>
+    </section>
+
+    <section class="tile"
+             hx-get="/tiles/llm-provider"
+             hx-trigger="load, every 10s"
+             hx-swap="innerHTML">
+      <h2>LLM provider</h2>
+      <p class="tile-loading">loading…</p>
+    </section>
+
+    <section class="tile tile-wide"
+             hx-get="/tiles/tool-activity"
+             hx-trigger="load, every 5s"
+             hx-swap="innerHTML">
+      <h2>Tool activity (last 20)</h2>
+      <p class="tile-loading">loading…</p>
+    </section>
+  </main>
+</body>
+</html>
