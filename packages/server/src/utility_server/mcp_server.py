@@ -8,10 +8,14 @@ from fastmcp import FastMCP
 from kubernetes_asyncio import client as k8s_client
 from kubernetes_asyncio import config as k8s_config
 
+from utility_server.llm.adapter import UtilityLLM
 from utility_server.models import RenewalPlan
+from utility_server.prom_client import PromClient
 from utility_server.tools.renew_certificate.execute import execute_renewal_plan
 from utility_server.tools.renew_certificate.plan import propose_renewal_plan
 from utility_server.tools.renew_certificate.scan import list_expiring_certificates
+from utility_server.tools.right_size_workload.analyze import propose_right_size_plan
+from utility_server.tools.right_size_workload.narrate import narrate_plan
 
 mcp: FastMCP = FastMCP("mcp-k8s-utility")
 
@@ -95,6 +99,24 @@ async def execute_certificate_renewal_tool(
         now=datetime.now(UTC),
     )
     return result.model_dump(mode="json")
+
+
+@mcp.tool(name="propose_right_size_plan")
+async def propose_right_size_plan_tool(namespace: str, window_days: int = 7) -> dict[str, Any]:
+    """Prometheus-driven right-sizing recommendations for Deployments in a namespace.
+
+    Dry-run by design: this tool only READS metrics and workload specs; it never writes.
+    LLM narration is attached if a provider is configured; otherwise a deterministic
+    statistical summary is returned.
+    """
+    _, apps_api = await _get_k8s()
+    prom = PromClient()
+    plan = await propose_right_size_plan(
+        prom=prom, apps_v1=apps_api, namespace=namespace, window_days=window_days
+    )
+    llm = UtilityLLM.from_env()
+    plan = await narrate_plan(plan, llm)
+    return plan.model_dump(mode="json")
 
 
 def run_stdio() -> None:

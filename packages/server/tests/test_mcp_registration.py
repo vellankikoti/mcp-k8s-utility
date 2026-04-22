@@ -10,6 +10,7 @@ async def test_renew_certificate_tools_registered():
         "list_expiring_certificates",
         "propose_certificate_renewal",
         "execute_certificate_renewal",
+        "propose_right_size_plan",
     }
     missing = required - names
     assert not missing, f"missing tools: {missing}"

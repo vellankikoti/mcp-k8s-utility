@@ -55,3 +55,33 @@ class RenewalResult(BaseModel):
     steps: list[RenewalStepResult]
     refused: bool = False
     refusal_reason: str | None = None
+
+
+class ResourceQuantities(BaseModel):
+    cpu_cores: float  # e.g. 0.125 for 125m
+    memory_mib: float  # e.g. 256.0 for 256Mi
+
+
+class WorkloadResources(BaseModel):
+    requests: ResourceQuantities
+    limits: ResourceQuantities | None = None
+
+
+class ResourceRecommendation(BaseModel):
+    ref: K8sObjectRef
+    container: str
+    current: WorkloadResources
+    observed_p95: ResourceQuantities
+    observed_p99: ResourceQuantities
+    recommended: WorkloadResources
+    rationale: str
+    savings_estimate_cpu_cores: float  # positive = would save
+    savings_estimate_memory_mib: float
+
+
+class RightSizePlan(BaseModel):
+    namespace: str | None
+    window_days: int
+    recommendations: list[ResourceRecommendation]
+    narration: str | None  # optional LLM summary
+    proposed_at: datetime
