@@ -20,6 +20,8 @@ from utility_server.tools.renew_certificate.plan import propose_renewal_plan
 from utility_server.tools.renew_certificate.scan import list_expiring_certificates
 from utility_server.tools.right_size_workload.analyze import propose_right_size_plan
 from utility_server.tools.right_size_workload.narrate import narrate_plan
+from utility_server.tools.tune_alert_thresholds.analyze import list_noisy_alerts
+from utility_server.tools.tune_alert_thresholds.propose import propose_alert_tuning
 
 mcp: FastMCP = FastMCP("mcp-k8s-utility", version=__version__)
 
@@ -167,6 +169,41 @@ async def execute_cleanup_plan_tool(plan: dict[str, Any], dry_run: bool = True) 
     typed_plan = CleanupPlan.model_validate(plan)
     result = await execute_cleanup_plan(core_v1=core_api, plan=typed_plan, dry_run=dry_run)
     return result.model_dump(mode="json")
+
+
+@mcp.tool(name="list_noisy_alerts")
+async def list_noisy_alerts_tool(
+    window_hours: float = 24.0, min_flaps_per_hour: float = 0.5
+) -> list[dict[str, Any]]:
+    """Query Prometheus for alerts that flapped often in the given window. Read-only."""
+    prom = PromClient()
+    alerts = await list_noisy_alerts(
+        prom=prom, window_hours=window_hours, min_flaps_per_hour=min_flaps_per_hour
+    )
+    return [a.model_dump(mode="json") for a in alerts]
+
+
+@mcp.tool(name="propose_alert_tuning")
+async def propose_alert_tuning_tool(
+    window_hours: float = 24.0, min_flaps_per_hour: float = 0.5
+) -> dict[str, Any]:
+    """Advisory: per-alert tuning recommendations (recommended `for:` duration).
+
+    Critical-severity alerts are flagged for human review; nothing is applied.
+    LLM narration if a provider is configured; deterministic summary otherwise.
+    """
+    prom = PromClient()
+    alerts = await list_noisy_alerts(
+        prom=prom, window_hours=window_hours, min_flaps_per_hour=min_flaps_per_hour
+    )
+    llm = UtilityLLM.from_env()
+    report = await propose_alert_tuning(
+        alerts=alerts,
+        llm=llm,
+        window_hours=window_hours,
+        min_flaps_per_hour=min_flaps_per_hour,
+    )
+    return report.model_dump(mode="json")
 
 
 def run_stdio() -> None:

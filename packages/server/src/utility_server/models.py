@@ -126,3 +126,30 @@ class CleanupResult(BaseModel):
     deleted_count: int
     skipped_count: int
     failed_count: int
+
+
+class NoisyAlert(BaseModel):
+    alertname: str
+    severity: str | None
+    namespace: str | None
+    fires_count: int  # transitions firing→resolved→firing
+    window_hours: float
+    flaps_per_hour: float
+    labels: dict[str, str]
+
+
+class AlertTuningProposal(BaseModel):
+    alert: NoisyAlert
+    current_for: str | None  # e.g. "5m" — None if not known
+    recommended_for: str  # e.g. "15m"
+    rationale: str
+    requires_human_review: bool  # True when severity=critical
+    fallback_only: bool  # True when LLM provider returned None
+
+
+class AlertTuningReport(BaseModel):
+    window_hours: float
+    min_flaps_per_hour: float
+    findings: list[AlertTuningProposal]
+    narration: str | None
+    analyzed_at: datetime
