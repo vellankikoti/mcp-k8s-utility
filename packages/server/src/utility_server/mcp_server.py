@@ -10,8 +10,11 @@ from kubernetes_asyncio import config as k8s_config
 
 from utility_server import __version__
 from utility_server.llm.adapter import UtilityLLM
-from utility_server.models import RenewalPlan
+from utility_server.models import CleanupPlan, RenewalPlan
 from utility_server.prom_client import PromClient
+from utility_server.tools.cleanup_evicted_pods.execute import execute_cleanup_plan
+from utility_server.tools.cleanup_evicted_pods.plan import propose_cleanup_plan
+from utility_server.tools.cleanup_evicted_pods.scan import list_evicted_pods
 from utility_server.tools.renew_certificate.execute import execute_renewal_plan
 from utility_server.tools.renew_certificate.plan import propose_renewal_plan
 from utility_server.tools.renew_certificate.scan import list_expiring_certificates
@@ -23,23 +26,35 @@ mcp: FastMCP = FastMCP("mcp-k8s-utility", version=__version__)
 _api_client: Any = None
 _custom_api: Any = None
 _apps_api: Any = None
+_core_api: Any = None
 
 
 async def _get_k8s() -> tuple[Any, Any]:
-    global _api_client, _custom_api, _apps_api
-    if _api_client is None:
-        kubeconfig = os.environ.get("KUBECONFIG")
-        if kubeconfig:
-            await k8s_config.load_kube_config(config_file=kubeconfig)
-        else:
-            try:
-                await k8s_config.load_kube_config()
-            except Exception:
-                k8s_config.load_incluster_config()  # type: ignore[no-untyped-call]
-        _api_client = k8s_client.ApiClient()
-        _custom_api = k8s_client.CustomObjectsApi(_api_client)
-        _apps_api = k8s_client.AppsV1Api(_api_client)
+    await _init_k8s()
     return _custom_api, _apps_api
+
+
+async def _get_core() -> Any:
+    await _init_k8s()
+    return _core_api
+
+
+async def _init_k8s() -> None:
+    global _api_client, _custom_api, _apps_api, _core_api
+    if _api_client is not None:
+        return
+    kubeconfig = os.environ.get("KUBECONFIG")
+    if kubeconfig:
+        await k8s_config.load_kube_config(config_file=kubeconfig)
+    else:
+        try:
+            await k8s_config.load_kube_config()
+        except Exception:
+            k8s_config.load_incluster_config()  # type: ignore[no-untyped-call]
+    _api_client = k8s_client.ApiClient()
+    _custom_api = k8s_client.CustomObjectsApi(_api_client)
+    _apps_api = k8s_client.AppsV1Api(_api_client)
+    _core_api = k8s_client.CoreV1Api(_api_client)
 
 
 async def _restart_via_secureops(namespace: str, name: str) -> dict[str, Any]:
@@ -118,6 +133,40 @@ async def propose_right_size_plan_tool(namespace: str, window_days: int = 7) -> 
     llm = UtilityLLM.from_env()
     plan = await narrate_plan(plan, llm)
     return plan.model_dump(mode="json")
+
+
+@mcp.tool(name="list_evicted_pods")
+async def list_evicted_pods_tool(namespace: str | None = None) -> list[dict[str, Any]]:
+    """List pods in Failed/Evicted state. Read-only."""
+    core_api = await _get_core()
+    pods = await list_evicted_pods(core_api, namespace=namespace)
+    return [p.model_dump(mode="json") for p in pods]
+
+
+@mcp.tool(name="propose_cleanup_plan")
+async def propose_cleanup_plan_tool(
+    namespace: str | None = None,
+    min_age_hours: float = 1.0,
+    max_deletes_per_namespace: int = 20,
+) -> dict[str, Any]:
+    """Produce a dry-run cleanup plan with per-namespace rate limits and age gates."""
+    core_api = await _get_core()
+    plan = await propose_cleanup_plan(
+        core_v1=core_api,
+        namespace=namespace,
+        min_age_hours=min_age_hours,
+        max_deletes_per_namespace=max_deletes_per_namespace,
+    )
+    return plan.model_dump(mode="json")
+
+
+@mcp.tool(name="execute_cleanup_plan")
+async def execute_cleanup_plan_tool(plan: dict[str, Any], dry_run: bool = True) -> dict[str, Any]:
+    """Apply a cleanup plan. Only pods marked will_delete=True are touched."""
+    core_api = await _get_core()
+    typed_plan = CleanupPlan.model_validate(plan)
+    result = await execute_cleanup_plan(core_v1=core_api, plan=typed_plan, dry_run=dry_run)
+    return result.model_dump(mode="json")
 
 
 def run_stdio() -> None:

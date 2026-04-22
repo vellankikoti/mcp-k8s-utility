@@ -11,6 +11,9 @@ async def test_renew_certificate_tools_registered():
         "propose_certificate_renewal",
         "execute_certificate_renewal",
         "propose_right_size_plan",
+        "list_evicted_pods",
+        "propose_cleanup_plan",
+        "execute_cleanup_plan",
     }
     missing = required - names
     assert not missing, f"missing tools: {missing}"

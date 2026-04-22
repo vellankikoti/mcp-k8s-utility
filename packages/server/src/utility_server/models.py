@@ -85,3 +85,44 @@ class RightSizePlan(BaseModel):
     recommendations: list[ResourceRecommendation]
     narration: str | None  # optional LLM summary
     proposed_at: datetime
+
+
+class EvictedPodSummary(BaseModel):
+    ref: K8sObjectRef
+    eviction_reason: str  # typically "Evicted"; could be "NodeLost", etc.
+    eviction_message: str
+    evicted_at: datetime | None
+    age_hours: float | None  # None if evicted_at is None
+    node_name: str | None
+    owner_kind: str | None  # Deployment, StatefulSet, Job — or None
+    owner_name: str | None
+
+
+class CleanupCandidate(BaseModel):
+    pod: EvictedPodSummary
+    will_delete: bool  # subject to allowlist / age / rate-limit gates
+    skip_reason: str | None = None  # populated when will_delete=False
+
+
+class CleanupPlan(BaseModel):
+    namespace: str | None
+    min_age_hours: float
+    max_deletes_per_namespace: int
+    namespace_allowlist: list[str]
+    candidates: list[CleanupCandidate]
+    proposed_at: datetime
+
+
+class CleanupOutcome(BaseModel):
+    pod: K8sObjectRef
+    status: Literal["deleted", "skipped_dry_run", "skipped_policy", "failed"]
+    error: str | None = None
+
+
+class CleanupResult(BaseModel):
+    dry_run: bool
+    executed_at: datetime
+    outcomes: list[CleanupOutcome]
+    deleted_count: int
+    skipped_count: int
+    failed_count: int
