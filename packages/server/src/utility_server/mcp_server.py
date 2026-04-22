@@ -10,12 +10,14 @@ from kubernetes_asyncio import config as k8s_config
 
 from utility_server import __version__
 from utility_server.llm.adapter import UtilityLLM
-from utility_server.models import CleanupPlan, RenewalPlan, RetentionCleanupPlan
+from utility_server.models import CleanupPlan, Postmortem, RenewalPlan, RetentionCleanupPlan
 from utility_server.opensearch_client import OpenSearchClient
 from utility_server.prom_client import PromClient
 from utility_server.tools.cleanup_evicted_pods.execute import execute_cleanup_plan
 from utility_server.tools.cleanup_evicted_pods.plan import propose_cleanup_plan
 from utility_server.tools.cleanup_evicted_pods.scan import list_evicted_pods
+from utility_server.tools.draft_postmortem.gather import compute_window, gather_postmortem_sources
+from utility_server.tools.draft_postmortem.render import render_postmortem_markdown
 from utility_server.tools.opensearch_retention.execute import execute_retention_plan
 from utility_server.tools.opensearch_retention.plan import propose_retention_plan
 from utility_server.tools.opensearch_retention.scan import list_old_indices
@@ -253,6 +255,53 @@ async def execute_retention_cleanup_tool(
     typed_plan = RetentionCleanupPlan.model_validate(plan)
     result = await execute_retention_plan(client=client, plan=typed_plan, dry_run=dry_run)
     return result.model_dump(mode="json")
+
+
+@mcp.tool(name="draft_postmortem")
+async def draft_postmortem_tool(
+    minutes_back: int = 30,
+    namespace: str | None = None,
+    workload: str | None = None,
+) -> dict[str, Any]:
+    """Draft a Google-SRE-style postmortem for the last `minutes_back` minutes.
+
+    Synthesizes K8s events + Prometheus metrics + OpenSearch logs + secure-ops audit rows.
+    Pure read-only. LLM narrates if a provider is configured; deterministic fallback otherwise.
+    """
+    core_api = await _get_core()
+    prom = PromClient()
+    osearch = OpenSearchClient()
+    llm = UtilityLLM.from_env()
+
+    start, end = compute_window(minutes_back=minutes_back)
+    sources = await gather_postmortem_sources(
+        core_v1=core_api,
+        prom=prom,
+        opensearch=osearch,
+        start=start,
+        end=end,
+        namespace=namespace,
+    )
+    markdown, llm_narrated = await render_postmortem_markdown(
+        llm=llm,
+        start=start,
+        end=end,
+        minutes=minutes_back,
+        namespace=namespace,
+        workload=workload,
+        sources=sources,
+    )
+    postmortem = Postmortem(
+        window_start=start,
+        window_end=end,
+        minutes_back=minutes_back,
+        namespace=namespace,
+        workload=workload,
+        sources=sources,
+        markdown=markdown,
+        llm_narrated=llm_narrated,
+    )
+    return postmortem.model_dump(mode="json")
 
 
 def run_stdio() -> None:

@@ -197,3 +197,59 @@ class RetentionCleanupResult(BaseModel):
     deleted_bytes: int
     skipped_count: int
     failed_count: int
+
+
+class PostmortemEvent(BaseModel):
+    timestamp: datetime | None
+    type: str
+    reason: str
+    message: str
+    involved_kind: str | None
+    involved_name: str | None
+    involved_namespace: str | None
+
+
+class PrometheusSample(BaseModel):
+    name: str
+    value: float | None
+    source: Literal["prometheus", "unavailable"]
+
+
+class LogBucket(BaseModel):
+    bucket_start: datetime | None
+    count: int
+
+
+class LogsSummary(BaseModel):
+    total: int
+    buckets: list[LogBucket]
+    source: Literal["opensearch", "unavailable", "unconfigured"]
+
+
+class AuditRowSummary(BaseModel):
+    row_id: int
+    action_id: str
+    tool: str | None
+    status: str | None
+    opa_reasons: list[str]
+    created_at: str | None
+
+
+class PostmortemSources(BaseModel):
+    events: list[PostmortemEvent]
+    events_source: Literal["k8s", "unavailable", "unconfigured"]
+    prometheus_samples: list[PrometheusSample]
+    logs: LogsSummary
+    audit: list[AuditRowSummary]
+    audit_source: Literal["sqlite", "unavailable", "unconfigured"]
+
+
+class Postmortem(BaseModel):
+    window_start: datetime
+    window_end: datetime
+    minutes_back: int
+    namespace: str | None
+    workload: str | None
+    sources: PostmortemSources
+    markdown: str
+    llm_narrated: bool  # True if LLM produced the markdown; False if deterministic fallback
