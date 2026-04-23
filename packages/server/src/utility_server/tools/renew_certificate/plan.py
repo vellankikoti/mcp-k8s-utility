@@ -90,9 +90,54 @@ async def propose_renewal_plan(
     )
 
 
+def _parse_bh_int(env_name: str, default: int) -> int:
+    """Read an integer env var. Returns default on missing or invalid value."""
+    import os
+
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _parse_bh_days(env_name: str, default: frozenset[int]) -> frozenset[int]:
+    """Read a comma-separated 0-6 weekday list env var. Returns default on error."""
+    import os
+
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return default
+    try:
+        days = frozenset(int(d.strip()) for d in raw.split(",") if d.strip())
+        if not days or not all(0 <= d <= 6 for d in days):
+            return default
+        return days
+    except ValueError:
+        return default
+
+
+_DEFAULT_BH_START = 13
+_DEFAULT_BH_END = 21
+_DEFAULT_BH_DAYS: frozenset[int] = frozenset({0, 1, 2, 3, 4})  # Mon-Fri
+
+
 def is_business_hours(moment: datetime | None = None) -> bool:
-    """UTC 13:00-21:00 on weekdays covers most business-hour risk windows."""
+    """Return True if ``moment`` falls within the configured business-hours window.
+
+    Defaults to UTC 13:00-21:00 Mon-Fri. Override with env vars:
+    - ``UTILITY_BUSINESS_HOURS_START_UTC``: hour (int, 0-23), default 13.
+    - ``UTILITY_BUSINESS_HOURS_END_UTC``: hour (int, 0-23), default 21.
+    - ``UTILITY_BUSINESS_HOURS_DAYS``: comma-separated 0-6 (0=Mon), default "0,1,2,3,4".
+
+    Invalid env values fall back to defaults silently — never raises.
+    """
     m = moment or datetime.now(UTC)
-    if m.weekday() >= 5:
+    start = _parse_bh_int("UTILITY_BUSINESS_HOURS_START_UTC", _DEFAULT_BH_START)
+    end = _parse_bh_int("UTILITY_BUSINESS_HOURS_END_UTC", _DEFAULT_BH_END)
+    days = _parse_bh_days("UTILITY_BUSINESS_HOURS_DAYS", _DEFAULT_BH_DAYS)
+    if m.weekday() not in days:
         return False
-    return 13 <= m.hour < 21
+    return start <= m.hour < end

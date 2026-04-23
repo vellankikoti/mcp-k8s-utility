@@ -282,3 +282,87 @@ async def test_etcd_quorum_ok_2_of_3() -> None:
 
     assert ok is True
     assert "2/3" in detail
+
+
+# ── A1: k3s / managed cluster refusal paths ────────────────────────────────
+
+
+async def test_refused_k3s_cluster_dry_run() -> None:
+    """On a k3s cluster, execute_control_plane_rotation must refuse even in dry_run mode."""
+    from unittest.mock import patch
+
+    from utility_server.tools.control_plane_rotation.execute import (
+        execute_control_plane_rotation,
+    )
+
+    core = _make_core_v1()
+    with patch(
+        "utility_server.tools.control_plane_rotation.execute.detect_cluster_type",
+        return_value="k3s",
+    ):
+        result = await execute_control_plane_rotation(
+            core_v1=core,
+            kubeconfig="/fake/kubeconfig",
+            node="k3s-node-0",
+            dry_run=True,
+        )
+
+    assert result.status == "refused_unsupported_cluster_type"
+    assert result.refusal_reason is not None
+    assert "k3s" in result.refusal_reason.lower() or "k3d" in result.refusal_reason.lower()
+    assert result.step_results == []
+    core.create_namespaced_pod.assert_not_called()
+
+
+async def test_refused_managed_cluster() -> None:
+    """On an EKS/GKE/AKS cluster, execute_control_plane_rotation must refuse."""
+    from unittest.mock import patch
+
+    from utility_server.tools.control_plane_rotation.execute import (
+        execute_control_plane_rotation,
+    )
+
+    core = _make_core_v1()
+    with patch(
+        "utility_server.tools.control_plane_rotation.execute.detect_cluster_type",
+        return_value="managed",
+    ):
+        result = await execute_control_plane_rotation(
+            core_v1=core,
+            kubeconfig="/fake/kubeconfig",
+            node="eks-node-0",
+            dry_run=False,
+            now=_off_hours_moment(),
+        )
+
+    assert result.status == "refused_unsupported_cluster_type"
+    assert result.refusal_reason is not None
+    assert "managed" in result.refusal_reason.lower() or "eks" in result.refusal_reason
+    assert result.step_results == []
+    core.create_namespaced_pod.assert_not_called()
+
+
+async def test_kubeadm_cluster_proceeds_past_type_gate() -> None:
+    """On a kubeadm cluster, the type gate is a no-op and execution continues."""
+    from unittest.mock import patch
+
+    from utility_server.tools.control_plane_rotation.execute import (
+        execute_control_plane_rotation,
+    )
+
+    core = _make_core_v1()
+    with patch(
+        "utility_server.tools.control_plane_rotation.execute.detect_cluster_type",
+        return_value="kubeadm",
+    ):
+        result = await execute_control_plane_rotation(
+            core_v1=core,
+            kubeconfig="/fake/kubeconfig",
+            node="master-0",
+            dry_run=True,
+            now=_off_hours_moment(),
+        )
+
+    # Dry run should proceed normally on kubeadm
+    assert result.status == "planned_dry_run"
+    assert result.step_results  # non-empty

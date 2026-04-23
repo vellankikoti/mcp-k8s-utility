@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.5.0 — 2026-04-23
+
+**Production-hardening fixes + workbook README.**
+
+### Added
+- **k3s/managed cluster detection** (`tools/control_plane_rotation/detect.py`) — `detect_cluster_type()` inspects node labels and annotations to classify the cluster as `kubeadm`, `k3s`, `managed`, or `unknown`. All four CP-rotation tools (`check_control_plane_cert_expiry`, `generate_control_plane_rotation_runbook`, `execute_control_plane_rotation`, `build_vault_cert_bundle`) call this at entry and return a structured refusal (no Pods created) on k3s/k3d or cloud-managed clusters. Refusal messages include the correct alternative commands.
+- **PromClient bearer / basic auth** — reads `PROMETHEUS_BEARER_TOKEN` (adds `Authorization: Bearer <token>`) and `PROMETHEUS_USER` + `PROMETHEUS_PASSWORD` (adds `Authorization: Basic <b64>`) from env. Bearer takes priority over basic. Constructor also accepts explicit kwargs for testing. Every existing call site is unaffected (zero-arg `PromClient()` still works).
+- **Configurable business-hours window** — `is_business_hours()` now reads `UTILITY_BUSINESS_HOURS_START_UTC` (int, default 13), `UTILITY_BUSINESS_HOURS_END_UTC` (int, default 21), and `UTILITY_BUSINESS_HOURS_DAYS` (comma-separated 0-6, default "0,1,2,3,4"). Invalid values fall back to defaults silently — never raises. Useful for APAC deployments or weekend-operating teams.
+- **RBAC manifest** (`deploy/rbac.yaml`) — ServiceAccount, ClusterRole, ClusterRoleBinding covering all 17 tools. Inline comments explain each permission. `docs/rbac.md` documents what each rule is used for, how to harden by splitting into two ServiceAccounts, how to scope CP rotation to kube-system only, and how to audit via the ledger.
+- **Workbook README** — full rewrite of `README.md` as an operator workbook: per-tool section with what it does, why it matters, exact test commands + expected output snippets, where it saves time, and honest known limits. Includes step-by-step k3d quickstart a real operator can follow.
+
+### Changed
+- `ControlPlaneCertSummary.source` Literal extended: `"unsupported_cluster_type"` added.
+- `ControlPlaneCertSummary` gains optional `refusal_reason: str | None` field.
+- `ControlPlaneRotationResult.status` Literal extended: `"refused_unsupported_cluster_type"` added.
+
+### Tests
+- 133 → 165 passing.
+- New: `test_detect.py` (11 cases for `detect_cluster_type`), `test_prom_client_auth.py` (7 cases for bearer/basic auth via pytest-httpx), `test_business_hours.py` (14 cases covering defaults, custom windows, APAC, 7-day, and invalid-env fallback).
+- `test_execute_gates.py` extended with 3 new cases for the k3s/managed/kubeadm refusal paths.
+
+### Published
+- PyPI: `mcp-k8s-utility==0.5.0`.
+- GHCR: `ghcr.io/vellankikoti/mcp-k8s-utility:v0.5.0` (multi-arch linux/amd64 + linux/arm64, cosign-signed).
+
 ## v0.4.0 — 2026-04-23
 
 **Control-plane certificate rotation + two correctness fixes from end-to-end validation.**

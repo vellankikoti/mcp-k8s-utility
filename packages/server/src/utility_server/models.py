@@ -264,7 +264,8 @@ class ControlPlaneCertSummary(BaseModel):
     # keys: "apiserver", "apiserver-kubelet-client", "front-proxy-client", "etcd-server"
     certs: dict[str, datetime | None]
     soonest_days_until_expiry: int | None  # min across all certs on this node
-    source: Literal["probed", "unavailable"]
+    source: Literal["probed", "unavailable", "unsupported_cluster_type"]
+    refusal_reason: str | None = None  # set when source="unsupported_cluster_type"
 
 
 class RotationStep(BaseModel):
@@ -300,6 +301,7 @@ class ControlPlaneRotationResult(BaseModel):
         "refused_cluster_unhealthy",
         "refused_concurrent_rotation",
         "refused_business_hours",
+        "refused_unsupported_cluster_type",
         "failed_mid_rotation",
         "rolled_back",
         "planned_dry_run",

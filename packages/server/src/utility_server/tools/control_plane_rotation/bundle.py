@@ -7,6 +7,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from utility_server.models import VaultCertBundle
+from utility_server.tools.control_plane_rotation.detect import (
+    K3S_REFUSAL_MESSAGE,
+    MANAGED_REFUSAL_MESSAGE,
+    detect_cluster_type,
+)
 from utility_server.tools.control_plane_rotation.probe import (
     list_master_nodes,
     read_apiserver_cert_pem,
@@ -19,6 +24,17 @@ async def build_vault_cert_bundle(
     kubeconfig: str,
     master_nodes: list[str] | None = None,
 ) -> VaultCertBundle:
+    cluster_type = await detect_cluster_type(core_v1)
+    if cluster_type in ("k3s", "managed"):
+        refusal = K3S_REFUSAL_MESSAGE if cluster_type == "k3s" else MANAGED_REFUSAL_MESSAGE
+        return VaultCertBundle(
+            node_certs=[],
+            bundle_plain="",
+            bundle_b64=base64.b64encode(b"").decode("ascii"),
+            vault_instruction=refusal,
+            built_at=datetime.now(UTC),
+        )
+
     nodes = master_nodes or await list_master_nodes(core_v1)
     node_certs: list[dict[str, str]] = []
     concat_parts: list[str] = []

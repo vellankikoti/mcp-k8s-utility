@@ -9,6 +9,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from utility_server.models import ControlPlaneCertSummary
+from utility_server.tools.control_plane_rotation.detect import (
+    K3S_REFUSAL_MESSAGE,
+    MANAGED_REFUSAL_MESSAGE,
+    detect_cluster_type,
+)
 
 # Paths relative to the host root (used via `chroot /host`).
 # The probe Pod mounts the host root at /host but debian:12-slim has no openssl,
@@ -172,6 +177,25 @@ async def probe_node_certs(
     now: datetime | None = None,
 ) -> ControlPlaneCertSummary:
     moment = now or datetime.now(UTC)
+
+    cluster_type = await detect_cluster_type(core_v1)
+    if cluster_type == "k3s":
+        return ControlPlaneCertSummary(
+            node=node,
+            certs={},
+            soonest_days_until_expiry=None,
+            source="unsupported_cluster_type",
+            refusal_reason=K3S_REFUSAL_MESSAGE,
+        )
+    if cluster_type == "managed":
+        return ControlPlaneCertSummary(
+            node=node,
+            certs={},
+            soonest_days_until_expiry=None,
+            source="unsupported_cluster_type",
+            refusal_reason=MANAGED_REFUSAL_MESSAGE,
+        )
+
     manifest = _read_only_pod_manifest(node, "probe")
     try:
         created = await core_v1.create_namespaced_pod(namespace="kube-system", body=manifest)

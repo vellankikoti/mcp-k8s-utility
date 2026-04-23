@@ -21,6 +21,11 @@ from utility_server.models import (
     RotationStep,
     RotationStepResult,
 )
+from utility_server.tools.control_plane_rotation.detect import (
+    K3S_REFUSAL_MESSAGE,
+    MANAGED_REFUSAL_MESSAGE,
+    detect_cluster_type,
+)
 from utility_server.tools.control_plane_rotation.probe import (
     _exec_via_kubectl,
     _wait_running,
@@ -217,6 +222,20 @@ async def execute_control_plane_rotation(
 ) -> ControlPlaneRotationResult:
     moment = now or datetime.now(UTC)
     step_results: list[RotationStepResult] = []
+
+    # --- Gate 0: cluster type ---
+    cluster_type = await detect_cluster_type(core_v1)
+    if cluster_type in ("k3s", "managed"):
+        refusal = K3S_REFUSAL_MESSAGE if cluster_type == "k3s" else MANAGED_REFUSAL_MESSAGE
+        return ControlPlaneRotationResult(
+            node=node,
+            dry_run=dry_run,
+            started_at=moment,
+            completed_at=moment,
+            status="refused_unsupported_cluster_type",
+            step_results=[],
+            refusal_reason=refusal,
+        )
 
     # --- Gate 1: business hours ---
     if not dry_run and is_business_hours(moment) and not force_during_business_hours:
