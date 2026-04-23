@@ -1,0 +1,305 @@
+{
+  "masters": [
+    "utility-cp-demo-control-plane",
+    "utility-cp-demo-control-plane2",
+    "utility-cp-demo-control-plane3"
+  ],
+  "cert_expiry": [
+    {
+      "node": "utility-cp-demo-control-plane",
+      "certs": {
+        "apiserver": null,
+        "apiserver-kubelet-client": null,
+        "front-proxy-client": null,
+        "etcd-server": null
+      },
+      "soonest_days_until_expiry": null,
+      "source": "probed"
+    },
+    {
+      "node": "utility-cp-demo-control-plane2",
+      "certs": {
+        "apiserver": null,
+        "apiserver-kubelet-client": null,
+        "front-proxy-client": null,
+        "etcd-server": null
+      },
+      "soonest_days_until_expiry": null,
+      "source": "probed"
+    },
+    {
+      "node": "utility-cp-demo-control-plane3",
+      "certs": {
+        "apiserver": null,
+        "apiserver-kubelet-client": null,
+        "front-proxy-client": null,
+        "etcd-server": null
+      },
+      "soonest_days_until_expiry": null,
+      "source": "probed"
+    }
+  ],
+  "runbook": {
+    "node": "utility-cp-demo-control-plane",
+    "step_count": 14,
+    "estimated_downtime_seconds": 30,
+    "first_step": "kubeadm certs check-expiration",
+    "last_step": "crictl ps | egrep 'etcd|kube-apiserver|kube-controller-manager|kube-scheduler'"
+  },
+  "dry_run": {
+    "node": "utility-cp-demo-control-plane",
+    "dry_run": true,
+    "started_at": "2026-04-23T06:08:57.690409Z",
+    "completed_at": "2026-04-23T06:08:57.697401Z",
+    "status": "planned_dry_run",
+    "step_results": [
+      {
+        "step": {
+          "index": 1,
+          "command": "kubeadm certs check-expiration",
+          "description": "Report current cert expiries before rotation.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 2,
+          "command": "kubeadm certs renew all",
+          "description": "Renew every control-plane certificate using the cluster CA.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 3,
+          "command": "kubeadm certs check-expiration",
+          "description": "Re-report expiries and confirm all dates advanced.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 4,
+          "command": "openssl x509 -enddate -noout -in /etc/kubernetes/pki/apiserver.crt",
+          "description": "Double-check apiserver cert.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 5,
+          "command": "openssl x509 -enddate -noout -in /etc/kubernetes/pki/apiserver-kubelet-client.crt",
+          "description": "Double-check kubelet-client cert.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 6,
+          "command": "mkdir -p /home/certs/",
+          "description": "Create staging dir for static-pod manifests.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 7,
+          "command": "mv /etc/kubernetes/manifests/*.yaml /home/certs/",
+          "description": "Move manifests out to stop static pods.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 8,
+          "command": "sleep 20",
+          "description": "Let kubelet notice the removed manifests and drain static pods.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 9,
+          "command": "mv /home/certs/*.yaml /etc/kubernetes/manifests/",
+          "description": "Move manifests back to start pods with renewed certs.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 10,
+          "command": "cp -i /etc/kubernetes/admin.conf /root/.kube/config",
+          "description": "Refresh kubeconfig on the node.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 11,
+          "command": "chown $(id -u):$(id -g) /root/.kube/config",
+          "description": "Restore kubeconfig ownership.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 12,
+          "command": "systemctl restart kubelet",
+          "description": "Restart kubelet so it picks up the renewed kubelet-client.conf.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 13,
+          "command": "sleep 10",
+          "description": "Let kubelet register and static pods stabilise.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      },
+      {
+        "step": {
+          "index": 14,
+          "command": "crictl ps | egrep 'etcd|kube-apiserver|kube-controller-manager|kube-scheduler'",
+          "description": "Confirm core static pods are running.",
+          "requires_root": true
+        },
+        "status": "skipped_dry_run",
+        "stdout": "",
+        "stderr": "",
+        "exit_code": null,
+        "duration_ms": null
+      }
+    ],
+    "refusal_reason": null
+  },
+  "real_rotation": {
+    "node": "utility-cp-demo-control-plane",
+    "dry_run": false,
+    "started_at": "2026-04-25T03:00:00Z",
+    "completed_at": "2026-04-23T06:09:01.199729Z",
+    "status": "rolled_back",
+    "step_results": [
+      {
+        "step": {
+          "index": 1,
+          "command": "kubeadm certs check-expiration",
+          "description": "Report current cert expiries before rotation.",
+          "requires_root": true
+        },
+        "status": "executed",
+        "stdout": "[check-expiration] Reading configuration from the \"kubeadm-config\" ConfigMap in namespace \"kube-system\"...\n[check-expiration] Use 'kubeadm init phase upload-config --config your-config-file' to re-upload it.\n\nCERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY   EXTERNALLY MANAGED\nadmin.conf                 Apr 23, 2027 06:06 UTC   364d            ca                      no      \napiserver                  Apr 23, 2027 06:06 UTC   364d            ca                      no      \napiserver-etcd-client      Apr 23, 2027 06:06 UTC   364d            etcd-ca                 no      \napiserver-kubelet-client   Apr 23, 2027 06:06 UTC   364d            ca                      no      \ncontroller-manager.conf    Apr 23, 2027 06:06 UTC   364d            ca                      no      \netcd-healthcheck-client    Apr 23, 2027 06:06 UTC   364d            etcd-ca                 no      \netcd-peer                  Apr 23, 2027 06:06 UTC   364d            etcd-ca                 no      \netcd-server                Apr 23, 2027 06:06 UTC   364d            etcd-ca                 no      \nfront-proxy-client         Apr 23, 2027 06:06 UTC   364d            front-proxy-ca          no      \nscheduler.conf             Apr 23, 2027 06:06 UTC   364d            ca                      no      \nsuper-admin.conf           Apr 23, 2027 06:06 UTC   364d            ca                      no      \n\nCERTIFICATE AUTHORITY   EXPIRES                  RESIDUAL TIME   EXTERNALLY MANAGED\nca                      Apr 20, 2036 06:06 UTC   9y              no      \netcd-ca                 Apr 20, 2036 06:06 UTC   9y              no      \nfront-proxy-ca          Apr 20, 2036 06:06 UTC   9y              no      \n",
+        "stderr": "",
+        "exit_code": 0,
+        "duration_ms": 169
+      },
+      {
+        "step": {
+          "index": 2,
+          "command": "kubeadm certs renew all",
+          "description": "Renew every control-plane certificate using the cluster CA.",
+          "requires_root": true
+        },
+        "status": "executed",
+        "stdout": "[renew] Reading configuration from the \"kubeadm-config\" ConfigMap in namespace \"kube-system\"...\n[renew] Use 'kubeadm init phase upload-config --config your-config-file' to re-upload it.\n\ncertificate embedded in the kubeconfig file for the admin to use and for kubeadm itself renewed\ncertificate for serving the Kubernetes API renewed\ncertificate the apiserver uses to access etcd renewed\ncertificate for the API server to connect to kubelet renewed\ncertificate embedded in the kubeconfig file for the controller manager to use renewed\ncertificate for liveness probes to healthcheck etcd renewed\ncertificate for etcd nodes to communicate with each other renewed\ncertificate for serving etcd renewed\ncertificate for the front proxy client renewed\ncertificate embedded in the kubeconfig file for the scheduler manager to use renewed\ncertificate embedded in the kubeconfig file for the super-admin renewed\n\nDone renewing certificates. You must restart the kube-apiserver, kube-controller-manager, kube-scheduler and etcd, so that they can use the new certificates.\n",
+        "stderr": "",
+        "exit_code": 0,
+        "duration_ms": 1156
+      },
+      {
+        "step": {
+          "index": 3,
+          "command": "kubeadm certs check-expiration",
+          "description": "Re-report expiries and confirm all dates advanced.",
+          "requires_root": true
+        },
+        "status": "failed",
+        "stdout": "",
+        "stderr": "error: Internal error occurred: error sending request: Post \"https://172.18.0.8:10250/exec/kube-system/secureops-cp-rotation-6n4hw/runner?command=chroot&command=%2Fhost&command=sh&command=-c&command=kubeadm+certs+check-expiration&error=1&output=1\": write tcp 172.18.0.8:44798->172.18.0.8:10250: use of closed network connection\n",
+        "exit_code": 1,
+        "duration_ms": 53
+      }
+    ],
+    "refusal_reason": "Step 3 failed; attempted best-effort rollback."
+  },
+  "post_rotation_all_ready": true,
+  "vault_bundle": {
+    "node_count": 3,
+    "nodes": [
+      "utility-cp-demo-control-plane",
+      "utility-cp-demo-control-plane2",
+      "utility-cp-demo-control-plane3"
+    ],
+    "bundle_plain_len": 4395,
+    "bundle_b64_len": 5860,
+    "vault_instruction_snippet": "Paste the 'bundle_b64' value into the Vault team's ticket under the 'apiserver-chain' field. The Vau"
+  },
+  "validated_at": "2026-04-23T06:09:07.766868+00:00",
+  "real_rotation_status": "rolled_back",
+  "cert_probed_count": 3
+}
