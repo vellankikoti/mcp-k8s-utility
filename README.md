@@ -1,24 +1,103 @@
 # mcp-k8s-utility
 
-AI-assisted Kubernetes operations with real guardrails. 17 MCP tools that replace
-the boring, unavoidable work: cert renewal, right-sizing, cleanup, alert tuning,
-log retention, postmortem drafting, control-plane CA rotation.
+**An AI assistant for the boring parts of running Kubernetes — with safety rails so it can't break things.**
 
 - [PyPI](https://pypi.org/project/mcp-k8s-utility/) · [GHCR](https://ghcr.io/vellankikoti/mcp-k8s-utility)
 - v0.5.0 — 2026-04-23
-- Status: **13 workload tools work on any Kubernetes** (k3d, kind, EKS, GKE, AKS, kubeadm).
-  The 4 control-plane rotation tools (#7–10) **require kubeadm** and will return a structured
-  refusal (no Pods created) on k3s/k3d or cloud-managed clusters — see [Known limits per tool](#per-tool-workbook).
 
-## Who this is for
+## What is this?
 
-You run Kubernetes in production. You spend time on the stuff that shouldn't require
-manual intervention — expired certs, flappy alerts, pods nobody cleaned up,
-cluster CA rotation nobody wants to touch. This tool hands those jobs to an AI
-without giving the AI your cluster password.
+Running a Kubernetes cluster involves a long list of repetitive chores. Renewing
+certificates before they expire. Cleaning up pods that got evicted during disk
+pressure. Tuning alerts that fire every 10 minutes for no real reason. Rotating
+the cluster's own CA certificates once a year. Writing postmortems after
+incidents.
 
-The AI narrates and proposes. You approve or reject. Every destructive path is
-dry-run by default, policy-gated, and rate-limited.
+These tasks all have something in common:
+
+- Nobody wants to do them.
+- If you skip them, things eventually break.
+- If you rush them, things break faster.
+
+This tool takes those jobs and lets you do them by **asking an AI in plain English**.
+But the AI doesn't get your cluster password. It can't decide anything risky.
+Everything dangerous is gated by policies you define, not by the AI's mood. And
+if you don't want to use an AI at all, every tool still works — just without the
+friendly narration.
+
+## What can it actually do?
+
+17 tools, grouped into 7 jobs:
+
+| Job | Tools | What changes for you |
+|---|---|---|
+| **Keep TLS certificates fresh** | 1–3 | The AI tells you which certs expire soon, plans the renewal, and does it — refusing if it's the middle of a workday unless you explicitly approve. |
+| **Make pods the right size** | 4 | Looks at 7 days of real CPU/memory usage. Tells you which pods are 5× bigger than they need to be, and which might OOM. |
+| **Clean up leftover junk** | 5–7 | Finds evicted/failed pods nobody deleted. Shows you the list. Deletes the safe ones after you confirm. |
+| **Stop alert fatigue** | 8–9 | Finds alerts that fire and resolve constantly. Suggests better thresholds. Critical alerts are flagged for human review — not auto-tuned. |
+| **Manage log storage** | 10–12 | Finds old OpenSearch indices. Shows how much disk they're wasting. Deletes ones not marked for compliance retention. |
+| **Write postmortems in 30 seconds** | 13 | Pulls the last 30 minutes of events, metrics, logs, and audit rows. Drafts a proper Google-SRE postmortem. You edit it; you don't start from blank. |
+| **Rotate cluster CA certificates** | 14–17 | For kubeadm clusters: the one-year rotation nobody wants to touch. Checks every master, runs the 14-step runbook with safety gates, rolls back if anything fails, builds the cert bundle for your Vault team. |
+
+## Why should I trust an AI with my cluster?
+
+Four rules the AI physically cannot break:
+
+1. **The AI doesn't have your cluster password.** It calls a tool. The tool calls Kubernetes.
+2. **The AI doesn't decide anything risky.** Policies you wrote decide. The AI can explain the decision.
+3. **Every action is logged in a way nobody can edit** — each row is cryptographically linked to the previous one. If someone tampers, the chain breaks and you see it.
+4. **If the AI is off, everything still works.** Every AI call has a deterministic fallback. You can run the whole toolkit with zero AI and get the same safety.
+
+## Who is this for?
+
+- **Platform engineers / SREs** — the day-to-day operators who want Saturdays back.
+- **Security engineers** — who need an audit trail and can't approve tools that hand AI the root password.
+- **Engineering leaders** — who want AI-assisted ops without becoming the next "AI deleted production" headline.
+
+You don't need to change your stack. It uses the Kubernetes you already have, your
+existing Prometheus, cert-manager, OpenSearch, whatever.
+
+## How do I try it?
+
+Three commands on a laptop:
+
+```bash
+pip install 'mcp-k8s-utility==0.5.0'
+mcp-k8s-utility version
+# then follow the k3d quickstart below
+```
+
+Or connect it to Claude Desktop and ask:
+
+> "List certs expiring in the next 14 days in my cluster and propose a safe renewal plan."
+
+The AI will call the tools. The tools will do the work safely. You'll get a reply
+with the answer and the evidence.
+
+## What it will NOT do
+
+Being honest up front:
+
+- **It will not rotate certificates on managed Kubernetes** (EKS, GKE, AKS). The cloud
+  provider owns those certs — it's their job. The tool detects this and tells you.
+- **It will not touch workloads you haven't allowed** — every delete path checks a
+  pattern allowlist; no pattern, no delete.
+- **It will not replace your change management.** For risky actions, it refuses during
+  business hours by default. Your on-call is still on-call.
+- **It will not work on unusual Kubernetes setups** (Talos, Bottlerocket, certain
+  hardened OpenShift profiles) — those haven't been tested and the privileged-Pod
+  technique may be blocked.
+
+---
+
+<!-- END OF SIMPLIFIED INTRO — deep workbook continues below -->
+
+## Status and validation
+
+**13 workload tools work on any Kubernetes** (k3d, kind, EKS, GKE, AKS, kubeadm).
+The 4 control-plane rotation tools (#14–17) **require kubeadm** and will return a
+structured refusal (no Pods created) on k3s/k3d or cloud-managed clusters — see
+[Per-tool workbook](#per-tool-workbook).
 
 ## Table of contents
 
