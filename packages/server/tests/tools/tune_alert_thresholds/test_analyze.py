@@ -12,7 +12,7 @@ def _prom_stub(*, first: list, label_lookups: dict[str, list]) -> PromClient:
             self._labels = dict(label_lookups)
 
         async def instant(self, expr: str):  # type: ignore[override]
-            if "changes(ALERTS" in expr:
+            if "count_over_time(ALERTS" in expr:
                 return self._first
             for name, payload in self._labels.items():
                 if f'alertname="{name}"' in expr:
