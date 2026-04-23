@@ -80,6 +80,17 @@ class OpenSearchClient:
         except Exception:
             return {}
 
+    async def get_index_mapping(self, index: str) -> dict[str, Any]:
+        """GET /{index}/_mapping. Returns {} on any failure."""
+        r = await self._request("GET", f"/{index}/_mapping")
+        if r is None:
+            return {}
+        try:
+            data = r.json()
+            return dict(data) if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
     async def delete_index(self, index: str) -> bool:
         """DELETE /{index}. Returns True on success, False otherwise."""
         r = await self._request("DELETE", f"/{index}")

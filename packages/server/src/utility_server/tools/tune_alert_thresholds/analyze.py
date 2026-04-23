@@ -10,9 +10,14 @@ _MIN_FLAPS_PER_HOUR = 0.5
 
 
 def _flaps_query(window_hours: float) -> str:
+    # count_over_time counts every scrape where the alert was in firing state.
+    # At Prometheus's default 1m evaluation interval, a 1h window yields up to 60 samples.
+    # We divide by the window in hours to normalize to "samples per hour".
+    # This reliably detects noisy/chatty alerts even when changes() returns 0 due to
+    # the ALERTS series being absent (not 0) when resolved — a known PromQL limitation.
     return (
         f"sum by (alertname, severity, namespace) "
-        f'(changes(ALERTS{{alertstate="firing"}}[{int(window_hours)}h]))'
+        f'(count_over_time(ALERTS{{alertstate="firing"}}[{int(window_hours)}h]))'
     )
 
 

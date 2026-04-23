@@ -1,0 +1,24 @@
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: demo-flaps
+        rules:
+          - alert: DemoFlappyAlert
+            expr: (time() % 120) < bool 60
+            for: 5s
+            labels:
+              severity: warning
+              namespace: demo-prod
+            annotations:
+              summary: "synthetic flappy alert for demo"
+          - alert: CriticalFlappyAlert
+            expr: (time() % 180) < bool 90
+            for: 5s
+            labels:
+              severity: critical
+              namespace: demo-prod
+            annotations:
+              summary: "synthetic critical flappy alert for demo — should NOT be tuned automatically"
+  prometheus.yml:
+    rule_files:
+      - /etc/config/alerting_rules.yml

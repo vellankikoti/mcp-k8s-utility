@@ -79,18 +79,19 @@ install_cert_manager() {
 }
 
 install_prometheus() {
-  _step "Installing prometheus-community/prometheus (lite, no alertmanager/pushgateway)…"
+  _step "Installing prometheus-community/prometheus with synthetic flappy alert rules…"
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update 2>/dev/null || true
   helm repo update prometheus-community >/dev/null
   helm upgrade --install prometheus prometheus-community/prometheus \
     --namespace monitoring --create-namespace \
+    -f "${REPO_ROOT}/tests/demo/prom-values.yaml" \
     --set alertmanager.enabled=false \
     --set pushgateway.enabled=false \
     --set prometheus-node-exporter.enabled=false \
     --set server.persistentVolume.enabled=false \
     --set prometheus-pushgateway.enabled=false \
     --wait --timeout 180s
-  _ok "Prometheus installed"
+  _ok "Prometheus installed (with demo-flaps rule group: DemoFlappyAlert + CriticalFlappyAlert)"
   _ok "  Port-forward: kubectl port-forward -n monitoring svc/prometheus-server 9090:80"
 }
 
@@ -167,9 +168,11 @@ YAML
 }
 
 seed_evicted_pod() {
-  _step "Seeding a canonical Evicted pod in demo-staging (via ghost-node technique)…"
-  # Bind the pod to a nonexistent node so no kubelet reconciles its status.
-  # The apiserver accepts the patch; the pod stays Failed/Evicted indefinitely.
+  _step "Seeding a canonical Evicted pod in demo-staging…"
+  # Use an unsatisfiable nodeAffinity so the pod stays Pending (no kubelet GC).
+  # Then patch status to Failed/Evicted. The node-affinity approach is more robust
+  # than ghost nodeName because Kubernetes GC does not clean up Pending pods with
+  # unsatisfiable affinity the same way it cleans up pods with nonexistent nodeName.
   kubectl apply -f - <<'YAML'
 apiVersion: v1
 kind: Pod
@@ -178,9 +181,16 @@ metadata:
   namespace: demo-staging
   labels: { demo: evicted-seed }
 spec:
-  nodeName: ghost-node-that-never-exists
   restartPolicy: Never
   terminationGracePeriodSeconds: 0
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values: ["ghost-node-that-never-exists"]
   containers:
     - name: ghost
       image: busybox:1.36
@@ -191,10 +201,64 @@ YAML
   if kubectl -n demo-staging patch pod stale-pod-1 --type=merge --subresource=status -p \
     '{"status":{"phase":"Failed","reason":"Evicted","message":"The node was low on resource: ephemeral-storage."}}' \
     >/dev/null 2>&1; then
-    _ok "stale-pod-1 seeded Failed/Evicted (ghost-node technique — kubelet will never touch it)"
+    _ok "stale-pod-1 seeded Failed/Evicted (node-affinity technique — stays in Failed/Evicted state)"
   else
     _warn "status subresource patch rejected by kube-apiserver; scenario B will show 0 evicted pods"
   fi
+}
+
+start_opensearch() {
+  _step "Starting local OpenSearch container…"
+  docker rm -f secureops-opensearch 2>/dev/null || true
+  docker run -d --name secureops-opensearch \
+    -p 9200:9200 \
+    -e "discovery.type=single-node" \
+    -e "DISABLE_SECURITY_PLUGIN=true" \
+    -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
+    opensearchproject/opensearch:2.11.1
+
+  # Wait for OpenSearch to accept requests
+  local retries=60
+  while [[ $retries -gt 0 ]]; do
+    if curl -sSf http://localhost:9200/_cluster/health >/dev/null 2>&1; then
+      _ok "OpenSearch ready on :9200"
+      break
+    fi
+    retries=$((retries - 1))
+    sleep 2
+  done
+  if [[ $retries -eq 0 ]]; then
+    _warn "OpenSearch didn't come up; scenario 5 will be skipped"
+    return 0
+  fi
+
+  # Seed 3 old indices (names contain past dates so age_days will be computed correctly)
+  _step "Seeding OpenSearch indices…"
+  curl -sS -X PUT http://localhost:9200/logs-2025.12.01 -H 'content-type: application/json' -d '{
+    "settings": {"number_of_shards": 1, "number_of_replicas": 0}
+  }' >/dev/null
+  curl -sS -X PUT http://localhost:9200/logs-2025.12.15 -H 'content-type: application/json' -d '{
+    "settings": {"number_of_shards": 1, "number_of_replicas": 0}
+  }' >/dev/null
+  # Third index: tagged as compliance/retention via mapping _meta (scan.py checks mappings too)
+  curl -sS -X PUT http://localhost:9200/logs-2026.01.01 -H 'content-type: application/json' -d '{
+    "settings": {"number_of_shards": 1, "number_of_replicas": 0}
+  }' >/dev/null
+  # Set mapping _meta with retention tag on the third index
+  curl -sS -X PUT "http://localhost:9200/logs-2026.01.01/_mapping" \
+    -H 'content-type: application/json' \
+    -d '{"_meta": {"retention": "compliance-2y"}}' >/dev/null
+
+  # Populate each index with a few docs so store.size > 0
+  for idx in logs-2025.12.01 logs-2025.12.15 logs-2026.01.01; do
+    for i in 1 2 3 4 5; do
+      curl -sS -X POST "http://localhost:9200/${idx}/_doc" \
+        -H 'content-type: application/json' \
+        -d "{\"msg\":\"test entry $i\",\"level\":\"error\",\"@timestamp\":\"2025-12-01T00:0${i}:00Z\"}" >/dev/null
+    done
+  done
+  curl -sS -X POST http://localhost:9200/_refresh >/dev/null
+  _ok "Seeded 3 indices (2 retention-eligible, 1 compliance-tagged via mapping _meta)"
 }
 
 emit_claude_config() {
@@ -256,6 +320,7 @@ main() {
   create_namespaces
   seed_cert_manager_resources
   deploy_workloads
+  start_opensearch
   seed_evicted_pod
   emit_claude_config
 }

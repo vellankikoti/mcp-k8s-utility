@@ -20,15 +20,21 @@ def _parse_creation(value: Any) -> datetime | None:
         return None
 
 
-def _retention_tagged(settings: dict[str, Any]) -> bool:
-    """True if the index has any known retention / compliance / legal-hold marker."""
+def _retention_tagged(settings: dict[str, Any], mapping: dict[str, Any] | None = None) -> bool:
+    """True if the index has any known retention / compliance / legal-hold marker.
+
+    Checks both index _settings (lifecycle / meta keys) and mapping _meta (set via
+    PUT /{index}/_mapping with a _meta block — the recommended approach on OpenSearch 2.x).
+    """
+    _TAG_KEYS = ("retention", "compliance", "legal_hold", "legal-hold")
+    # 1. Check settings (index.meta / index._meta / lifecycle keys)
     for root_key, root_val in settings.items():
         if not isinstance(root_val, dict):
             continue
         idx = root_val.get("settings", {}).get("index", {})
         meta = idx.get("meta") or idx.get("_meta") or {}
         if isinstance(meta, dict):
-            for tag_key in ("retention", "compliance", "legal_hold", "legal-hold"):
+            for tag_key in _TAG_KEYS:
                 if tag_key in meta:
                     return True
         for lifecycle_key in ("lifecycle", "plugins", "retention_policy_id"):
@@ -38,6 +44,16 @@ def _retention_tagged(settings: dict[str, Any]) -> bool:
             if isinstance(val, str) and val:
                 return True
         _ = root_key
+    # 2. Check mapping _meta (PUT /{index}/_mapping with {"_meta": {"retention": ...}})
+    if mapping:
+        for _index_name, index_mapping in mapping.items():
+            if not isinstance(index_mapping, dict):
+                continue
+            meta = index_mapping.get("mappings", {}).get("_meta") or {}
+            if isinstance(meta, dict):
+                for tag_key in _TAG_KEYS:
+                    if tag_key in meta:
+                        return True
     return False
 
 
@@ -80,6 +96,7 @@ async def list_old_indices(
         except (TypeError, ValueError):
             doc_count = 0
         settings = await client.get_index_settings(name)
+        mapping = await client.get_index_mapping(name)
         out.append(
             OpenSearchIndexSummary(
                 name=name,
@@ -87,7 +104,7 @@ async def list_old_indices(
                 size_bytes=size_bytes,
                 creation_timestamp=created,
                 age_days=age_days,
-                retention_tagged=_retention_tagged(settings),
+                retention_tagged=_retention_tagged(settings, mapping),
                 matched_pattern=matched,
             )
         )
