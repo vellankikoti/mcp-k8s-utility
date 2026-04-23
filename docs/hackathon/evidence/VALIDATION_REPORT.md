@@ -462,3 +462,155 @@ All 4 nodes Ready immediately after the rotation attempt.
 4. **etcd quorum check**: The spec mentions etcdctl endpoint health check. Not
    implemented in the current health gate (uses Ready condition only). Can be added as
    a kubectl exec into the etcd pod in a follow-up.
+
+---
+
+## Tool 7-10 — Control-plane rotation (re-run after fixes) — PASS
+
+Commit: `845060f` — "fix(cp-rotation): chroot probes through /host, kubectl-exec retry on cert-rotation races, etcd quorum gate"
+
+Fresh 3-control-plane kind cluster (`utility-cp-demo`), Kubernetes v1.33.1, 2026-04-23.
+Evidence: `05-cp-rotation-output.json` / `05-cp-rotation-output.err`.
+
+### Three fixes applied
+
+| Gap | Fix | Files |
+|-----|-----|-------|
+| Gap 1: `openssl` not in probe image | `_CERT_FILES` paths changed from `/host/etc/...` to `/etc/...`; probe wraps openssl in `["chroot", "/host", "openssl", ...]`; same chroot for `read_apiserver_cert_pem` | `probe.py` |
+| Gap 2: kubelet exec disconnects mid-rotation | `_exec_via_kubectl` retries up to 5x with exponential backoff (2s start, 1.5x, 10s cap) on `_TRANSIENT_MARKERS` including "use of closed network connection" | `probe.py` |
+| Gap 3: etcd quorum not checked | `_cluster_healthy` now calls `_check_etcd_quorum` which runs `etcdctl endpoint health --cluster --write-out=json` inside the etcd Pod; uses `N//2+1` threshold; `_etcd_quorum_threshold()` extracted and tested | `execute.py` |
+
+### `check_control_plane_cert_expiry` — PASS (all 3 nodes, all cert dates populated)
+
+After the chroot fix, all 4 cert paths per node now return real dates:
+
+```json
+"cert_expiry": [
+  {
+    "node": "utility-cp-demo-control-plane",
+    "certs": {
+      "apiserver": "2027-04-23T06:18:27Z",
+      "apiserver-kubelet-client": "2027-04-23T06:18:27Z",
+      "front-proxy-client": "2027-04-23T06:18:27Z",
+      "etcd-server": "2027-04-23T06:18:27Z"
+    },
+    "soonest_days_until_expiry": 364,
+    "source": "probed"
+  },
+  {
+    "node": "utility-cp-demo-control-plane2",
+    "certs": { "apiserver": "2027-04-23T06:18:41Z", ... },
+    "soonest_days_until_expiry": 364,
+    "source": "probed"
+  },
+  {
+    "node": "utility-cp-demo-control-plane3",
+    "certs": { "apiserver": "2027-04-23T06:18:56Z", ... },
+    "soonest_days_until_expiry": 364,
+    "source": "probed"
+  }
+]
+```
+
+All 12 cert fields (4 per node × 3 nodes) populated. No nulls.
+
+### `generate_control_plane_rotation_runbook` — PASS (14 steps, correct)
+
+Generated 14-step runbook for `utility-cp-demo-control-plane`. First step:
+`kubeadm certs check-expiration`. Last step: `crictl ps | egrep '...'`. Markdown
+includes Pre-flight checklist (etcd quorum check mentioned), Commands, Verification,
+and After-rotating-all-masters sections.
+
+### `execute_control_plane_rotation` dry_run=True — PASS (14 skipped_dry_run)
+
+```json
+"dry_run": {
+  "status": "planned_dry_run",
+  "dry_run": true,
+  "step_results": [/* 14 entries, all status="skipped_dry_run", exit_code=null */]
+}
+```
+
+No Pods created, no cluster contact beyond the BH/health gate (which is skipped for dry_run).
+
+### `execute_control_plane_rotation` dry_run=False — PASS (status: completed)
+
+All 14 steps executed, all rc=0. No rollback.
+
+```json
+"real_rotation": {
+  "status": "completed",
+  "node": "utility-cp-demo-control-plane",
+  "started_at": "2026-04-23T06:20:31.117528Z",
+  "completed_at": "2026-04-23T06:21:49.247923Z",
+  "step_results": [
+    { "step": {"index": 1}, "status": "executed", "exit_code": 0 },
+    { "step": {"index": 2}, "status": "executed", "exit_code": 0 },
+    ...
+    { "step": {"index": 14}, "status": "executed", "exit_code": 0 }
+  ]
+}
+```
+
+Step 2 stdout confirmed all certs renewed:
+```
+certificate for serving the Kubernetes API renewed
+certificate for the API server to connect to kubelet renewed
+...
+certificate for serving etcd renewed
+certificate embedded in the kubeconfig file for the scheduler manager to use renewed
+Done renewing certificates.
+```
+
+Step 4 stdout (openssl post-renew double-check):
+```
+notAfter=Apr 23 06:20:33 2027 GMT
+```
+
+Pre-rotation notAfter was `2027-04-23T06:18:27Z`; post-rotation `Apr 23 06:20:33 2027 GMT`
+— both are ~1 year from cluster creation / cert renewal time. The rotation clock advanced
+~2 minutes as expected.
+
+No transient retry events in any step's stderr — the retry logic was armed but not
+triggered (clean run, no kubelet cert reload race on this iteration).
+
+### Post-rotation cluster health
+
+```
+utility-cp-demo-control-plane    Ready
+utility-cp-demo-control-plane2   Ready
+utility-cp-demo-control-plane3   Ready
+utility-cp-demo-worker           Ready
+```
+
+All 4 nodes Ready immediately after rotation completed.
+
+### `build_vault_cert_bundle` — PASS (3 PEMs, base64 round-trips)
+
+```json
+"vault_bundle": {
+  "node_certs": [/* 3 entries */],
+  "bundle_plain": "===== apiserver.crt from node utility-cp-demo-control-plane =====\n-----BEGIN CERTIFICATE-----\n...",
+  "bundle_b64": "PT09PT0g...",
+  "vault_instruction": "Paste the 'bundle_b64' value into the Vault team's ticket...",
+  "built_at": "2026-04-23T06:21:54.635761Z"
+}
+```
+
+- PEM count in `bundle_plain`: **3** (verified by counting `-----BEGIN CERTIFICATE-----`)
+- `base64.b64decode(bundle_b64) == bundle_plain`: **True** (exact match)
+
+### Summary — Scenario D re-run (after fixes)
+
+| # | Tool | Status | Notes |
+|---|------|--------|-------|
+| 7 | `check_control_plane_cert_expiry` | **PASS** | 3/3 nodes probed; 12/12 cert fields populated (chroot fix); soonest_days=364 |
+| 8 | `generate_control_plane_rotation_runbook` | **PASS** | 14/14 steps, correct markdown sections |
+| 9 | `execute_control_plane_rotation` dry-run | **PASS** | 14 skipped_dry_run, no cluster mutations |
+| 10 | `execute_control_plane_rotation` real | **PASS** | status=completed, 14/14 executed rc=0, certs advanced |
+| 11 | `build_vault_cert_bundle` | **PASS** | 3 PEMs, base64 round-trip verified |
+
+**All 5 tools in Scenario D: PASS. No caveats remaining.**
+
+CI run for commit `845060f`: success.
+Unit test delta: 126 → 133 (+7 tests for the 3 gaps).

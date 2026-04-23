@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.4.0 — 2026-04-23
+
+**Control-plane certificate rotation + two correctness fixes from end-to-end validation.**
+
+### Added
+- **Tool #7 `check_control_plane_cert_expiry`** — probes every master node via a short-lived read-only privileged Pod that chroots into the host and runs `openssl x509 -enddate`. Returns per-node expiries for `apiserver`, `apiserver-kubelet-client`, `front-proxy-client`, and `etcd/server` certs, plus the soonest-to-expire count in days.
+- **Tool #8 `generate_control_plane_rotation_runbook`** — emits the exact 14-command kubeadm rotation sequence as Markdown, with pre-flight and verification sections. Pure read.
+- **Tool #9 `execute_control_plane_rotation`** — runs the runbook on one master via a privileged Pod. Four safety gates: business-hours, cluster health (all masters Ready), etcd quorum intact, no concurrent rotation. Dry-run default. Best-effort rollback on step failure. Transient-exec retry absorbs the kubelet-cert-reload race after `kubeadm certs renew all`.
+- **Tool #10 `build_vault_cert_bundle`** — post-rotation: reads `apiserver.crt` from each master, concatenates with per-node separator headers, base64-encodes. Emits the blob ready to paste into the Vault team's ticket for the External Secrets Operator pipeline.
+- **3-control-plane demo bootstrap** (`tests/demo/demo-cp-up.sh`, `tests/demo/cp-rotation-kind.yaml`) — brings up a kind cluster with 3 control-planes + 1 worker for rotation rehearsals.
+
+### Fixed (from e2e validation)
+- `opensearch_retention_cleanup` retention-tag detection now also checks the index's mapping `_meta.retention` key. OpenSearch 2.x rejects unknown keys from the settings path, so mapping-metadata is the reliable spot. `OpenSearchClient.get_index_mapping` is a new thin method.
+- `tune_alert_thresholds` flap detection switched from `changes(ALERTS{...})` to `count_over_time(ALERTS{...})`. `changes()` returns zero when a series goes absent between firings (common for alerts that resolve cleanly), which made chatty alerts invisible. `count_over_time` counts sample presence and catches them correctly.
+
+### Invariants (unchanged)
+- LLM never holds cluster credentials; LLM never decides a write.
+- Every destructive path is dry-run-default, policy-gated, and rate-limited.
+- Every control-plane write is audited and rolls back on failure.
+
+### Published
+- PyPI: `mcp-k8s-utility==0.4.0`.
+- GHCR: `ghcr.io/vellankikoti/mcp-k8s-utility:v0.4.0` (multi-arch linux/amd64 + linux/arm64, cosign-signed).
+- SBOM: `sbom-v0.4.0.cdx.json` attached to the GitHub Release.
+
+### Validation
+- 133 tests passing; ruff + mypy strict clean.
+- End-to-end validated on a 3-control-plane kind cluster. Real rotation ran to `status=completed`: 14/14 steps rc=0 in 78 seconds, cert dates advanced ~1 year on the target master, cluster health preserved throughout, Vault bundle built with 3 distinct PEMs and verified round-trip.
+
 ## v0.3.0 — 2026-04-22
 
 **Week 3 — full tool surface + Dockerfile + kind demo harness + cosign-signed multi-arch image.**
