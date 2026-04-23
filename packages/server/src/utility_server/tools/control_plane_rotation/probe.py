@@ -10,12 +10,26 @@ from typing import Any
 
 from utility_server.models import ControlPlaneCertSummary
 
+# Paths relative to the host root (used via `chroot /host`).
+# The probe Pod mounts the host root at /host but debian:12-slim has no openssl,
+# so we chroot into /host to use the host's openssl binary.
 _CERT_FILES = {
-    "apiserver": "/host/etc/kubernetes/pki/apiserver.crt",
-    "apiserver-kubelet-client": "/host/etc/kubernetes/pki/apiserver-kubelet-client.crt",
-    "front-proxy-client": "/host/etc/kubernetes/pki/front-proxy-client.crt",
-    "etcd-server": "/host/etc/kubernetes/pki/etcd/server.crt",
+    "apiserver": "/etc/kubernetes/pki/apiserver.crt",
+    "apiserver-kubelet-client": "/etc/kubernetes/pki/apiserver-kubelet-client.crt",
+    "front-proxy-client": "/etc/kubernetes/pki/front-proxy-client.crt",
+    "etcd-server": "/etc/kubernetes/pki/etcd/server.crt",
 }
+
+# Transient errors observed when kubelet reloads its serving cert during rotation.
+_TRANSIENT_MARKERS = (
+    "use of closed network connection",
+    "connection refused",
+    "unexpected EOF",
+    "error dialing backend",
+    "connection reset by peer",
+    "TLS handshake timeout",
+    "i/o timeout",
+)
 
 
 async def list_master_nodes(core_v1: Any) -> list[str]:
@@ -90,31 +104,50 @@ async def _exec_via_kubectl(
     name: str,
     cmd: list[str],
     timeout_s: float = 60.0,
+    retries: int = 5,
+    backoff_start_s: float = 2.0,
 ) -> tuple[int, str, str]:
-    """Run `kubectl exec -n NS POD -- CMD...`. Returns (rc, stdout, stderr)."""
+    """Run `kubectl exec -n NS POD -- CMD...`. Returns (rc, stdout, stderr).
+
+    Retries on transient connection errors that occur when the kubelet reloads
+    its serving certificate mid-rotation (e.g. "use of closed network connection").
+    """
     env = {**os.environ, "KUBECONFIG": kubeconfig}
-    proc = await asyncio.create_subprocess_exec(
-        "kubectl",
-        "-n",
-        namespace,
-        "exec",
-        name,
-        "--",
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-    except TimeoutError:
-        proc.kill()
-        return -1, "", "timeout"
-    return (
-        proc.returncode or 0,
-        stdout.decode("utf-8", errors="replace"),
-        stderr.decode("utf-8", errors="replace"),
-    )
+    backoff = backoff_start_s
+    last_stderr = ""
+    for attempt in range(retries + 1):
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl",
+            "-n",
+            namespace,
+            "exec",
+            name,
+            "--",
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except TimeoutError:
+            proc.kill()
+            last_stderr = "timeout"
+            if attempt < retries:
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 1.5, 10.0)
+                continue
+            return -1, "", "timeout"
+        rc = proc.returncode or 0
+        stdout = stdout_b.decode("utf-8", errors="replace")
+        stderr = stderr_b.decode("utf-8", errors="replace")
+        last_stderr = stderr
+        transient = any(marker in stderr for marker in _TRANSIENT_MARKERS)
+        if rc == 0 or not transient or attempt == retries:
+            return rc, stdout, stderr
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 1.5, 10.0)
+    return -1, "", last_stderr
 
 
 def parse_openssl_enddate(line: str) -> datetime | None:
@@ -159,11 +192,13 @@ async def probe_node_certs(
 
         certs: dict[str, datetime | None] = {}
         for key, path in _CERT_FILES.items():
+            # Use chroot /host so the host's openssl binary is used (debian:12-slim
+            # has no openssl). Paths in _CERT_FILES are relative to the host root.
             rc, stdout, _ = await _exec_via_kubectl(
                 kubeconfig,
                 "kube-system",
                 pod_name,
-                ["openssl", "x509", "-enddate", "-noout", "-in", path],
+                ["chroot", "/host", "openssl", "x509", "-enddate", "-noout", "-in", path],
                 timeout_s=15,
             )
             if rc == 0:
@@ -214,11 +249,12 @@ async def read_apiserver_cert_pem(
     try:
         if not await _wait_running(core_v1, "kube-system", pod_name, timeout_s=60):
             return None
+        # Use chroot /host so the PEM is definitively sourced from the host root.
         rc, stdout, _ = await _exec_via_kubectl(
             kubeconfig,
             "kube-system",
             pod_name,
-            ["cat", "/host/etc/kubernetes/pki/apiserver.crt"],
+            ["chroot", "/host", "cat", "/etc/kubernetes/pki/apiserver.crt"],
             timeout_s=15,
         )
         return stdout if rc == 0 else None

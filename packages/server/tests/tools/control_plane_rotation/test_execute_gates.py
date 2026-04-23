@@ -117,18 +117,25 @@ async def test_refused_cluster_unhealthy() -> None:
 
 
 async def test_refused_concurrent_rotation() -> None:
+    from unittest.mock import patch
+
     from utility_server.tools.control_plane_rotation.execute import (
         execute_control_plane_rotation,
     )
 
     core = _make_core_v1(rotator_pods_active=True)
-    result = await execute_control_plane_rotation(
-        core_v1=core,
-        kubeconfig="/fake/kubeconfig",
-        node="master-0",
-        dry_run=False,
-        now=_off_hours_moment(),
-    )
+    # Patch etcd quorum check so cluster health passes and we reach the concurrency gate.
+    with patch(
+        "utility_server.tools.control_plane_rotation.execute._check_etcd_quorum",
+        return_value=(True, "etcd quorum OK: mocked"),
+    ):
+        result = await execute_control_plane_rotation(
+            core_v1=core,
+            kubeconfig="/fake/kubeconfig",
+            node="master-0",
+            dry_run=False,
+            now=_off_hours_moment(),
+        )
     assert result.status == "refused_concurrent_rotation"
     assert result.refusal_reason is not None
     assert result.step_results == []
@@ -173,3 +180,105 @@ async def test_dry_run_step_indexes_correct() -> None:
     )
     indexes = [sr.step.index for sr in result.step_results]
     assert indexes == list(range(1, 15))
+
+
+# ── Gap 3 fix: etcd quorum threshold ─────────────────────────────────────────
+
+
+def test_etcd_quorum_threshold() -> None:
+    """Verify the N//2 + 1 formula for various cluster sizes."""
+    from utility_server.tools.control_plane_rotation.execute import _etcd_quorum_threshold
+
+    # 1-node cluster needs 1
+    assert _etcd_quorum_threshold(1) == 1
+    # 3-node cluster: tolerates 1 failure, needs 2
+    assert _etcd_quorum_threshold(3) == 2
+    # 5-node cluster: tolerates 2 failures, needs 3
+    assert _etcd_quorum_threshold(5) == 3
+    # 7-node cluster: tolerates 3 failures, needs 4
+    assert _etcd_quorum_threshold(7) == 4
+
+
+def _make_etcd_health_json(statuses: list[bool]) -> bytes:
+    """Build etcdctl endpoint health JSON output."""
+    import json
+
+    return json.dumps(
+        [
+            {"endpoint": f"https://192.168.0.{i + 1}:2379", "health": ok}
+            for i, ok in enumerate(statuses)
+        ]
+    ).encode()
+
+
+def _make_two_call_mock(pods_out: bytes, health_out: bytes) -> object:
+    """Return an async factory that serves pods_out on first call, health_out on second."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    call_count = 0
+
+    async def _factory(*args: object, **kwargs: object) -> object:
+        nonlocal call_count
+        proc = MagicMock()
+        call_count += 1
+        if call_count == 1:
+            proc.communicate = AsyncMock(return_value=(pods_out, b""))
+            proc.returncode = 0
+        else:
+            proc.communicate = AsyncMock(return_value=(health_out, b""))
+            proc.returncode = 0
+        return proc
+
+    return _factory
+
+
+async def test_etcd_quorum_ok_3_of_3() -> None:
+    """3/3 healthy endpoints on 3-node cluster — quorum OK."""
+    from unittest.mock import patch
+
+    from utility_server.tools.control_plane_rotation.execute import _check_etcd_quorum
+
+    pods_out = b"pod/etcd-cp1\n"
+    health_out = _make_etcd_health_json([True, True, True])
+    factory = _make_two_call_mock(pods_out, health_out)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=factory):
+        ok, detail = await _check_etcd_quorum("/fake/kubeconfig")
+
+    assert ok is True
+    assert "3/3" in detail
+
+
+async def test_etcd_quorum_broken_1_of_3() -> None:
+    """1/3 healthy on 3-node cluster — quorum broken (need 2)."""
+    from unittest.mock import patch
+
+    from utility_server.tools.control_plane_rotation.execute import _check_etcd_quorum
+
+    pods_out = b"pod/etcd-cp1\n"
+    health_out = _make_etcd_health_json([True, False, False])
+    factory = _make_two_call_mock(pods_out, health_out)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=factory):
+        ok, detail = await _check_etcd_quorum("/fake/kubeconfig")
+
+    assert ok is False
+    assert "1/3" in detail
+    assert "quorum" in detail.lower()
+
+
+async def test_etcd_quorum_ok_2_of_3() -> None:
+    """2/3 healthy on 3-node cluster — quorum OK (2 >= floor(3/2)+1 = 2)."""
+    from unittest.mock import patch
+
+    from utility_server.tools.control_plane_rotation.execute import _check_etcd_quorum
+
+    pods_out = b"pod/etcd-cp1\n"
+    health_out = _make_etcd_health_json([True, True, False])
+    factory = _make_two_call_mock(pods_out, health_out)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=factory):
+        ok, detail = await _check_etcd_quorum("/fake/kubeconfig")
+
+    assert ok is True
+    assert "2/3" in detail
