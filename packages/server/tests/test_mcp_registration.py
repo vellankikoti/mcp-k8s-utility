@@ -20,6 +20,10 @@ async def test_renew_certificate_tools_registered():
         "propose_retention_cleanup",
         "execute_retention_cleanup",
         "draft_postmortem",
+        "check_control_plane_cert_expiry",
+        "generate_control_plane_rotation_runbook",
+        "execute_control_plane_rotation",
+        "build_vault_cert_bundle",
     }
     missing = required - names
     assert not missing, f"missing tools: {missing}"

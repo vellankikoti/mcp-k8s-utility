@@ -16,7 +16,18 @@ from utility_server.prom_client import PromClient
 from utility_server.tools.cleanup_evicted_pods.execute import execute_cleanup_plan
 from utility_server.tools.cleanup_evicted_pods.plan import propose_cleanup_plan
 from utility_server.tools.cleanup_evicted_pods.scan import list_evicted_pods
-from utility_server.tools.draft_postmortem.gather import compute_window, gather_postmortem_sources
+from utility_server.tools.control_plane_rotation.bundle import build_vault_cert_bundle
+from utility_server.tools.control_plane_rotation.execute import (
+    execute_control_plane_rotation,
+)
+from utility_server.tools.control_plane_rotation.probe import (
+    check_control_plane_cert_expiry,
+)
+from utility_server.tools.control_plane_rotation.runbook import generate_runbook
+from utility_server.tools.draft_postmortem.gather import (
+    compute_window,
+    gather_postmortem_sources,
+)
 from utility_server.tools.draft_postmortem.render import render_postmortem_markdown
 from utility_server.tools.opensearch_retention.execute import execute_retention_plan
 from utility_server.tools.opensearch_retention.plan import propose_retention_plan
@@ -302,6 +313,58 @@ async def draft_postmortem_tool(
         llm_narrated=llm_narrated,
     )
     return postmortem.model_dump(mode="json")
+
+
+def _kubeconfig_path() -> str:
+    return os.environ.get("KUBECONFIG") or os.path.expanduser("~/.kube/config")
+
+
+@mcp.tool(name="check_control_plane_cert_expiry")
+async def check_control_plane_cert_expiry_tool() -> list[dict[str, Any]]:
+    """Probe every master node for cert expiries via a short-lived read-only privileged Pod."""
+    core = await _get_core()
+    summaries = await check_control_plane_cert_expiry(core_v1=core, kubeconfig=_kubeconfig_path())
+    return [s.model_dump(mode="json") for s in summaries]
+
+
+@mcp.tool(name="generate_control_plane_rotation_runbook")
+async def generate_control_plane_rotation_runbook_tool(node: str) -> dict[str, Any]:
+    """Emit a step-by-step runbook for renewing kubeadm-managed control-plane certs on one
+    master."""
+    return generate_runbook(node).model_dump(mode="json")
+
+
+@mcp.tool(name="execute_control_plane_rotation")
+async def execute_control_plane_rotation_tool(
+    node: str,
+    dry_run: bool = True,
+    force_during_business_hours: bool = False,
+) -> dict[str, Any]:
+    """Execute the rotation runbook on one master via a privileged Pod.
+    Dry-run by default. Business-hours-gated. Cluster-health gated.
+    Attempts best-effort rollback on any step failure."""
+    core = await _get_core()
+    result = await execute_control_plane_rotation(
+        core_v1=core,
+        kubeconfig=_kubeconfig_path(),
+        node=node,
+        dry_run=dry_run,
+        force_during_business_hours=force_during_business_hours,
+    )
+    return result.model_dump(mode="json")
+
+
+@mcp.tool(name="build_vault_cert_bundle")
+async def build_vault_cert_bundle_tool(
+    master_nodes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Post-rotation: read apiserver.crt from each master, concatenate, base64-encode,
+    emit Vault-ready blob."""
+    core = await _get_core()
+    bundle = await build_vault_cert_bundle(
+        core_v1=core, kubeconfig=_kubeconfig_path(), master_nodes=master_nodes
+    )
+    return bundle.model_dump(mode="json")
 
 
 def run_stdio() -> None:

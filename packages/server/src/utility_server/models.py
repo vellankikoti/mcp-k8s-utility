@@ -5,6 +5,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+# ---------------------------------------------------------------------------
+# Control-plane certificate rotation models (v0.3.0)
+# ---------------------------------------------------------------------------
+
 
 class K8sObjectRef(BaseModel):
     kind: str
@@ -253,3 +257,60 @@ class Postmortem(BaseModel):
     sources: PostmortemSources
     markdown: str
     llm_narrated: bool  # True if LLM produced the markdown; False if deterministic fallback
+
+
+class ControlPlaneCertSummary(BaseModel):
+    node: str
+    # keys: "apiserver", "apiserver-kubelet-client", "front-proxy-client", "etcd-server"
+    certs: dict[str, datetime | None]
+    soonest_days_until_expiry: int | None  # min across all certs on this node
+    source: Literal["probed", "unavailable"]
+
+
+class RotationStep(BaseModel):
+    index: int
+    command: str
+    description: str
+    requires_root: bool = True
+
+
+class ControlPlaneRotationPlan(BaseModel):
+    node: str
+    steps: list[RotationStep]
+    estimated_downtime_seconds: int
+    markdown_runbook: str
+
+
+class RotationStepResult(BaseModel):
+    step: RotationStep
+    status: Literal["executed", "skipped_dry_run", "failed", "rolled_back"]
+    stdout: str
+    stderr: str
+    exit_code: int | None
+    duration_ms: int | None
+
+
+class ControlPlaneRotationResult(BaseModel):
+    node: str
+    dry_run: bool
+    started_at: datetime
+    completed_at: datetime | None
+    status: Literal[
+        "completed",
+        "refused_cluster_unhealthy",
+        "refused_concurrent_rotation",
+        "refused_business_hours",
+        "failed_mid_rotation",
+        "rolled_back",
+        "planned_dry_run",
+    ]
+    step_results: list[RotationStepResult]
+    refusal_reason: str | None = None
+
+
+class VaultCertBundle(BaseModel):
+    node_certs: list[dict[str, str]]  # [{"node": "...", "pem": "..."}]
+    bundle_plain: str
+    bundle_b64: str
+    vault_instruction: str
+    built_at: datetime
