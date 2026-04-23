@@ -26,7 +26,7 @@ def _retention_tagged(settings: dict[str, Any], mapping: dict[str, Any] | None =
     Checks both index _settings (lifecycle / meta keys) and mapping _meta (set via
     PUT /{index}/_mapping with a _meta block — the recommended approach on OpenSearch 2.x).
     """
-    _TAG_KEYS = ("retention", "compliance", "legal_hold", "legal-hold")
+    tag_keys = ("retention", "compliance", "legal_hold", "legal-hold")
     # 1. Check settings (index.meta / index._meta / lifecycle keys)
     for root_key, root_val in settings.items():
         if not isinstance(root_val, dict):
@@ -34,7 +34,7 @@ def _retention_tagged(settings: dict[str, Any], mapping: dict[str, Any] | None =
         idx = root_val.get("settings", {}).get("index", {})
         meta = idx.get("meta") or idx.get("_meta") or {}
         if isinstance(meta, dict):
-            for tag_key in _TAG_KEYS:
+            for tag_key in tag_keys:
                 if tag_key in meta:
                     return True
         for lifecycle_key in ("lifecycle", "plugins", "retention_policy_id"):
@@ -51,7 +51,7 @@ def _retention_tagged(settings: dict[str, Any], mapping: dict[str, Any] | None =
                 continue
             meta = index_mapping.get("mappings", {}).get("_meta") or {}
             if isinstance(meta, dict):
-                for tag_key in _TAG_KEYS:
+                for tag_key in tag_keys:
                     if tag_key in meta:
                         return True
     return False
